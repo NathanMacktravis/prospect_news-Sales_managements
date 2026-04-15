@@ -46,7 +46,7 @@ class NewsletterSender:
         if date is None:
             date = datetime.now(timezone.utc)
         date_str = date.strftime("%d/%m/%Y")
-        return f"💎 Top 5 Prospects HNWI — {date_str}"
+        return f"Top 5 Prospects HNWI — {date_str}"
 
     def send_to_one(
         self,
