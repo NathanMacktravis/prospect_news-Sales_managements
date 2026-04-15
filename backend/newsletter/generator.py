@@ -8,7 +8,6 @@ Newsletter Generator — builds a rich HTML newsletter with:
 from __future__ import annotations
 
 import base64
-import io
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -24,37 +23,68 @@ except ImportError:
 
 from backend.processors.scorer import ScoredProspect
 
-# ─── Colour palette ───────────────────────────────────────────────────────────
+# ─── Société Générale colour palette ──────────────────────────────────────────
 
 COLORS = {
-    "primary": "#1A3C5E",       # deep navy
-    "accent": "#C9A84C",        # gold
-    "bg": "#F8F9FA",
-    "white": "#FFFFFF",
-    "text": "#2C3E50",
-    "muted": "#6C757D",
-    "border": "#DEE2E6",
-    "success": "#28A745",
-    "warning": "#FFC107",
-    "danger": "#DC3545",
+    "primary":  "#E30613",   # SG rouge institutionnel
+    "dark":     "#1A1A1A",   # Noir SG
+    "bg":       "#F5F5F5",   # Fond clair
+    "white":    "#FFFFFF",
+    "text":     "#1A1A1A",
+    "muted":    "#6B6B6B",
+    "border":   "#E0E0E0",
+    "success":  "#2E7D32",
+    "warning":  "#E65100",
+    "danger":   "#C62828",
+    "accent":   "#B20010",   # Rouge SG foncé
 }
 
 EVENT_BADGE_COLORS = {
-    "IPO": ("#1A3C5E", "#E8F0F8"),
-    "M&A": ("#5E1A3C", "#F8E8F0"),
-    "Fundraising": ("#1A5E3C", "#E8F8F0"),
-    "Exit": ("#C9A84C", "#FDF8E8"),
-    "Appointment": ("#5E3C1A", "#F8F0E8"),
-    "Other": ("#4A4A4A", "#F0F0F0"),
+    "IPO":          ("#FFFFFF", "#E30613"),
+    "M&A":          ("#FFFFFF", "#1A1A1A"),
+    "Fundraising":  ("#B20010", "#FAE5E6"),
+    "Exit":         ("#1A1A1A", "#EFEFEF"),
+    "Appointment":  ("#FFFFFF", "#B20010"),
+    "Other":        ("#6B6B6B", "#F0F0F0"),
 }
+
+# ─── SG logo mark — HTML tables (compatible tous clients email) ───────────────
+# Deux colonnes : marque 2×2 carrés + raison sociale
+
+_SG_LOGO_HTML = """<table cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td style="vertical-align:middle;padding-right:16px;">
+      <table cellpadding="0" cellspacing="4" border="0">
+        <tr>
+          <td style="width:20px;height:20px;background:white;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+          <td style="width:20px;height:20px;background:#1A1A1A;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+        </tr>
+        <tr>
+          <td style="width:20px;height:20px;background:#1A1A1A;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+          <td style="width:20px;height:20px;background:white;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+        </tr>
+      </table>
+    </td>
+    <td style="vertical-align:middle;">
+      <p style="margin:0 0 2px;font-size:15px;font-weight:800;color:white;
+                 letter-spacing:2px;line-height:1;font-family:Arial,Helvetica,sans-serif;">
+        SOCI&Eacute;T&Eacute;
+      </p>
+      <p style="margin:0;font-size:15px;font-weight:800;color:white;
+                 letter-spacing:2px;line-height:1;font-family:Arial,Helvetica,sans-serif;">
+        G&Eacute;N&Eacute;RALE
+      </p>
+    </td>
+  </tr>
+</table>"""
 
 
 def _event_badge(event_type: str) -> str:
-    text_color, bg_color = EVENT_BADGE_COLORS.get(event_type, ("#4A4A4A", "#F0F0F0"))
+    text_color, bg_color = EVENT_BADGE_COLORS.get(event_type, ("#6B6B6B", "#F0F0F0"))
     return (
         f'<span style="background:{bg_color};color:{text_color};'
-        f'padding:3px 10px;border-radius:12px;font-size:11px;'
-        f'font-weight:700;letter-spacing:0.5px;">'
+        f'padding:3px 10px;border-radius:2px;font-size:10px;'
+        f'font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">'
         f'{event_type}</span>'
     )
 
@@ -64,33 +94,34 @@ def _score_bar(score: int, label: str = "Potentiel") -> str:
     if score >= 80:
         color = COLORS["success"]
     elif score >= 60:
-        color = COLORS["accent"]
+        color = COLORS["primary"]
     else:
         color = COLORS["muted"]
 
     return f"""
     <div style="margin:6px 0;">
       <div style="display:flex;justify-content:space-between;
-                  font-size:11px;color:{COLORS['muted']};margin-bottom:3px;">
-        <span>{label}</span><span style="font-weight:700;color:{color};">{score}/100</span>
+                  font-size:11px;color:{COLORS['muted']};margin-bottom:4px;
+                  text-transform:uppercase;letter-spacing:0.5px;">
+        <span>{label}</span>
+        <span style="font-weight:700;color:{color};">{score}/100</span>
       </div>
-      <div style="background:#E9ECEF;border-radius:4px;height:6px;overflow:hidden;">
-        <div style="background:{color};width:{score}%;height:100%;
-                    border-radius:4px;"></div>
+      <div style="background:#E0E0E0;border-radius:2px;height:5px;overflow:hidden;">
+        <div style="background:{color};width:{score}%;height:100%;border-radius:2px;"></div>
       </div>
     </div>"""
 
 
 def _urgency_dots(urgency: int) -> str:
-    """Render urgency as filled/empty dots (0–10 → 0–5 dots scale)."""
+    """Render urgency as filled/empty circles (0–10 mapped to 0–5 dots)."""
     dots_total = 5
     filled = round(urgency / 2)
     filled = max(0, min(dots_total, filled))
     dots_html = ""
     for i in range(dots_total):
-        color = COLORS["danger"] if i < filled else "#DEE2E6"
-        dots_html += f'<span style="color:{color};font-size:14px;">●</span> '
-    return f'<span title="Urgence: {urgency}/10">{dots_html}</span>'
+        color = COLORS["primary"] if i < filled else "#E0E0E0"
+        dots_html += f'<span style="color:{color};font-size:13px;">&#9679;</span>'
+    return f'<span title="Urgence: {urgency}/10" style="letter-spacing:2px;">{dots_html}</span>'
 
 
 def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
@@ -102,11 +133,13 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
         return None
 
     try:
-        names = [p.name.split(" ")[0] + " " + (p.name.split(" ")[-1] if len(p.name.split()) > 1 else "") for p in prospects]
-        # Truncate long names
+        names = [
+            p.name.split(" ")[0] + " " + (p.name.split(" ")[-1] if len(p.name.split()) > 1 else "")
+            for p in prospects
+        ]
         names = [n[:18] + "…" if len(n) > 18 else n for n in names]
         potential_scores = [p.potential_score for p in prospects]
-        urgency_scores = [p.urgency_score * 10 for p in prospects]  # scale to 100
+        urgency_scores   = [p.urgency_score * 10 for p in prospects]
 
         fig = go.Figure()
 
@@ -115,8 +148,8 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
             x=names,
             y=potential_scores,
             marker_color=COLORS["primary"],
-            marker_line_color=COLORS["accent"],
-            marker_line_width=1.5,
+            marker_line_color=COLORS["dark"],
+            marker_line_width=1,
             text=[f"{s}" for s in potential_scores],
             textposition="outside",
             textfont=dict(size=11, color=COLORS["text"]),
@@ -126,9 +159,9 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
             name="Urgence × 10",
             x=names,
             y=urgency_scores,
-            marker_color=COLORS["accent"],
+            marker_color=COLORS["dark"],
             marker_line_color=COLORS["primary"],
-            marker_line_width=1.5,
+            marker_line_width=1,
             text=[f"{s}" for s in urgency_scores],
             textposition="outside",
             textfont=dict(size=11, color=COLORS["text"]),
@@ -137,7 +170,7 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
         fig.update_layout(
             title=dict(
                 text="Comparatif Prospects : Potentiel vs Urgence",
-                font=dict(size=14, color=COLORS["text"], family="Arial, sans-serif"),
+                font=dict(size=13, color=COLORS["text"], family="Arial, sans-serif"),
                 x=0.5,
             ),
             barmode="group",
@@ -154,11 +187,8 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
             ),
             margin=dict(l=40, r=40, t=60, b=40),
             height=300,
-            width=680,
-            xaxis=dict(
-                tickfont=dict(size=11),
-                showgrid=False,
-            ),
+            width=700,
+            xaxis=dict(tickfont=dict(size=11), showgrid=False),
             yaxis=dict(
                 range=[0, 115],
                 tickfont=dict(size=10),
@@ -189,96 +219,116 @@ def generate_newsletter_html(
     # ── Prospect cards ────────────────────────────────────────────────────────
     cards_html = ""
     for rank, prospect in enumerate(prospects, start=1):
-        event_badge = _event_badge(prospect.event_type)
-        score_bar = _score_bar(prospect.potential_score)
+        event_badge  = _event_badge(prospect.event_type)
+        score_bar    = _score_bar(prospect.potential_score)
         urgency_dots = _urgency_dots(prospect.urgency_score)
 
-        rank_color = COLORS["accent"] if rank == 1 else (COLORS["primary"] if rank <= 3 else COLORS["muted"])
+        if rank == 1:
+            rank_color = COLORS["primary"]
+        elif rank <= 3:
+            rank_color = COLORS["accent"]
+        else:
+            rank_color = COLORS["muted"]
 
         cards_html += f"""
         <tr>
-          <td style="padding:20px 0;">
+          <td style="padding:14px 0;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                   style="background:{COLORS['white']};border-radius:8px;
+                   style="background:{COLORS['white']};
                           border:1px solid {COLORS['border']};
-                          box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                          border-left:4px solid {rank_color};
+                          border-radius:0 3px 3px 0;">
               <tr>
                 <!-- Rank badge -->
-                <td width="60" style="padding:20px;vertical-align:top;text-align:center;">
-                  <div style="width:40px;height:40px;border-radius:50%;
+                <td width="52" style="padding:20px 10px;vertical-align:top;text-align:center;">
+                  <div style="width:34px;height:34px;border-radius:2px;
                               background:{rank_color};color:white;
-                              font-size:18px;font-weight:800;line-height:40px;
-                              text-align:center;margin:0 auto;">
+                              font-size:15px;font-weight:800;line-height:34px;
+                              text-align:center;margin:0 auto;
+                              font-family:Arial,Helvetica,sans-serif;">
                     {rank}
                   </div>
                 </td>
                 <!-- Main content -->
-                <td style="padding:20px 20px 20px 0;vertical-align:top;">
+                <td style="padding:20px 28px 20px 10px;vertical-align:top;">
                   <table width="100%" cellpadding="0" cellspacing="0" border="0">
                     <tr>
                       <td>
-                        <!-- Header: name + badge -->
+                        <!-- Nom + badge événement -->
                         <table width="100%" cellpadding="0" cellspacing="0" border="0">
                           <tr>
                             <td>
-                              <span style="font-size:18px;font-weight:800;
-                                           color:{COLORS['text']};">
+                              <span style="font-size:17px;font-weight:800;
+                                           color:{COLORS['text']};
+                                           font-family:Arial,Helvetica,sans-serif;">
                                 {prospect.name}
                               </span>
                               &nbsp;&nbsp;{event_badge}
                             </td>
                           </tr>
                         </table>
-                        <!-- Title + company + location -->
-                        <p style="margin:4px 0 12px;font-size:13px;color:{COLORS['muted']};">
-                          {prospect.data.title} — <strong>{prospect.company}</strong>
-                          &nbsp;·&nbsp; {prospect.data.location}
-                          &nbsp;·&nbsp; <strong style="color:{COLORS['accent']}">
-                            {prospect.amount_label}
-                          </strong>
+                        <!-- Titre, société, lieu, montant -->
+                        <p style="margin:6px 0 16px;font-size:13px;
+                                  color:{COLORS['muted']};line-height:1.55;">
+                          {prospect.data.title} &mdash;
+                          <strong style="color:{COLORS['text']};">{prospect.company}</strong>
+                          &nbsp;&middot;&nbsp;{prospect.data.location}
+                          &nbsp;&middot;&nbsp;
+                          <strong style="color:{COLORS['primary']};">{prospect.amount_label}</strong>
                         </p>
-                        <!-- Event summary -->
-                        <p style="margin:0 0 12px;font-size:14px;
-                                  color:{COLORS['text']};line-height:1.6;">
+                        <!-- Résumé de l'événement -->
+                        <p style="margin:0 0 18px;font-size:14px;
+                                  color:{COLORS['text']};line-height:1.85;
+                                  font-family:Arial,Helvetica,sans-serif;">
                           {prospect.data.event_summary}
                         </p>
-                        <!-- Sales pitch box -->
+                        <!-- Encart Sales Insight -->
                         <table width="100%" cellpadding="0" cellspacing="0" border="0">
                           <tr>
-                            <td style="background:#F0F4F8;border-left:4px solid {COLORS['accent']};
-                                       padding:12px 16px;border-radius:0 6px 6px 0;">
-                              <p style="margin:0;font-size:13px;color:{COLORS['primary']};
-                                        font-style:italic;line-height:1.6;">
-                                <strong style="font-style:normal;
-                                               color:{COLORS['accent']};">
-                                  💡 Sales Insight:
-                                </strong>
-                                &nbsp;{prospect.sales_pitch}
+                            <td style="background:#FBF5F5;
+                                       border-left:4px solid {COLORS['primary']};
+                                       padding:14px 20px;
+                                       border-radius:0 3px 3px 0;">
+                              <p style="margin:0 0 6px;font-size:10px;
+                                        font-weight:700;letter-spacing:1px;
+                                        text-transform:uppercase;
+                                        color:{COLORS['primary']};">
+                                Insight commercial
+                              </p>
+                              <p style="margin:0;font-size:13px;
+                                        color:{COLORS['dark']};
+                                        font-style:italic;line-height:1.8;
+                                        font-family:Arial,Helvetica,sans-serif;">
+                                {prospect.sales_pitch}
                               </p>
                             </td>
                           </tr>
                         </table>
-                        <!-- Scores row -->
+                        <!-- Scores -->
                         <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                               style="margin-top:14px;">
+                               style="margin-top:18px;">
                           <tr>
-                            <td width="50%" style="padding-right:16px;vertical-align:top;">
+                            <td width="50%" style="padding-right:24px;vertical-align:top;">
                               {score_bar}
                             </td>
                             <td width="50%" style="vertical-align:top;">
-                              <div style="font-size:11px;color:{COLORS['muted']};margin-bottom:3px;">
+                              <div style="font-size:10px;color:{COLORS['muted']};
+                                          margin-bottom:5px;text-transform:uppercase;
+                                          letter-spacing:0.8px;">
                                 Urgence
                               </div>
                               {urgency_dots}
                             </td>
                           </tr>
                         </table>
-                        <!-- Source link -->
-                        <p style="margin:10px 0 0;font-size:12px;">
+                        <!-- Lien source -->
+                        <p style="margin:14px 0 0;font-size:12px;
+                                  border-top:1px solid {COLORS['border']};
+                                  padding-top:12px;">
                           <a href="{prospect.source_url}"
                              style="color:{COLORS['primary']};text-decoration:none;
-                                    border-bottom:1px solid {COLORS['accent']};">
-                            🔗 Voir la source
+                                    font-weight:700;letter-spacing:0.3px;">
+                            Consulter la source
                           </a>
                           &nbsp;&nbsp;
                           <span style="color:{COLORS['muted']};">
@@ -294,23 +344,26 @@ def generate_newsletter_html(
           </td>
         </tr>"""
 
-    # ── Chart section ─────────────────────────────────────────────────────────
+    # ── Graphique comparatif ──────────────────────────────────────────────────
     if chart_b64:
         chart_section = f"""
         <tr>
-          <td style="padding:20px 0;">
+          <td style="padding:14px 0;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                   style="background:{COLORS['white']};border-radius:8px;
+                   style="background:{COLORS['white']};
                           border:1px solid {COLORS['border']};
-                          padding:20px;">
+                          border-radius:3px;
+                          padding:24px;">
               <tr>
                 <td style="text-align:center;">
-                  <h3 style="margin:0 0 16px;font-size:15px;color:{COLORS['text']};">
-                    Analyse comparative — Top 5 Prospects
-                  </h3>
+                  <p style="margin:0 0 16px;font-size:11px;font-weight:700;
+                              letter-spacing:1.5px;text-transform:uppercase;
+                              color:{COLORS['muted']};">
+                    Analyse comparative &mdash; Top 5 Prospects
+                  </p>
                   <img src="data:image/png;base64,{chart_b64}"
                        alt="Comparatif Prospects"
-                       style="max-width:100%;border-radius:6px;" />
+                       style="max-width:100%;border-radius:3px;" />
                 </td>
               </tr>
             </table>
@@ -319,101 +372,145 @@ def generate_newsletter_html(
     else:
         chart_section = ""
 
-    # ── Full HTML template ────────────────────────────────────────────────────
+    # ── Template HTML complet ─────────────────────────────────────────────────
     html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HNWI Prospect Intelligence — {date_str}</title>
+  <title>HNWI Prospect Intelligence &mdash; {date_str}</title>
 </head>
 <body style="margin:0;padding:0;background:{COLORS['bg']};
              font-family:Arial,Helvetica,sans-serif;">
-  <!-- Outer wrapper -->
+
   <table width="100%" cellpadding="0" cellspacing="0" border="0"
-         style="background:{COLORS['bg']};padding:20px 0;">
+         style="background:{COLORS['bg']};padding:28px 0;">
     <tr>
       <td>
-        <!-- Container -->
-        <table width="680" cellpadding="0" cellspacing="0" border="0"
-               align="center" style="max-width:680px;width:100%;">
+        <table width="700" cellpadding="0" cellspacing="0" border="0"
+               align="center" style="max-width:700px;width:100%;">
 
-          <!-- ── HEADER ── -->
+          <!-- ── EN-TÊTE : fond rouge SG + logo ── -->
           <tr>
-            <td style="background:{COLORS['primary']};border-radius:10px 10px 0 0;
-                       padding:30px 36px;">
+            <td style="background:{COLORS['primary']};
+                       border-radius:4px 4px 0 0;
+                       padding:26px 36px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td>
-                    <p style="margin:0;font-size:11px;color:{COLORS['accent']};
-                               letter-spacing:2px;font-weight:700;
-                               text-transform:uppercase;">
-                      HNWI PROSPECT INTELLIGENCE
-                    </p>
-                    <h1 style="margin:6px 0 4px;font-size:24px;color:white;font-weight:800;">
-                      Top 5 Prospects du Jour
-                    </h1>
-                    <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.7);">
-                      {date_str} · Détecté via signaux publics (IPO, M&A, Levées de fonds)
-                    </p>
+                  <td style="vertical-align:middle;">
+                    {_SG_LOGO_HTML}
                   </td>
                   <td align="right" style="vertical-align:middle;">
-                    <div style="background:{COLORS['accent']};border-radius:50%;
-                                width:52px;height:52px;text-align:center;line-height:52px;
-                                font-size:24px;">💎</div>
+                    <p style="margin:0 0 3px;font-size:10px;
+                               color:rgba(255,255,255,0.65);
+                               letter-spacing:1.5px;font-weight:600;
+                               text-transform:uppercase;">
+                      Prospect Intelligence
+                    </p>
+                    <p style="margin:0;font-size:13px;
+                               color:rgba(255,255,255,0.9);font-weight:600;">
+                      {date_str}
+                    </p>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- ── INTRO BAND ── -->
+          <!-- ── BANDEAU TITRE : fond noir SG ── -->
           <tr>
-            <td style="background:{COLORS['accent']};padding:12px 36px;">
-              <p style="margin:0;font-size:13px;color:{COLORS['primary']};font-weight:600;">
-                {len(prospects)} prospects qualifiés détectés aujourd'hui —
+            <td style="background:{COLORS['dark']};padding:14px 36px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="vertical-align:middle;">
+                    <h1 style="margin:0;font-size:20px;color:white;
+                               font-weight:800;letter-spacing:0.5px;">
+                      Top 5 Prospects HNWI du Jour
+                    </h1>
+                  </td>
+                  <td align="right" style="vertical-align:middle;">
+                    <span style="font-size:12px;color:rgba(255,255,255,0.55);">
+                      IPO &middot; M&amp;A &middot; Levées de fonds
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ── BANDEAU INTRO : rouge SG foncé ── -->
+          <tr>
+            <td style="background:{COLORS['accent']};padding:10px 36px;">
+              <p style="margin:0;font-size:13px;color:white;font-weight:600;">
+                {len(prospects)} prospect{'s' if len(prospects) > 1 else ''} qualifi{'és' if len(prospects) > 1 else 'é'} détect{'és' if len(prospects) > 1 else 'é'} aujourd'hui &mdash;
                 tous présentent des signaux de liquidité récents.
               </p>
             </td>
           </tr>
 
-          <!-- ── BODY ── -->
+          <!-- ── CORPS : cartes prospects ── -->
           <tr>
-            <td style="background:{COLORS['bg']};padding:20px 24px;">
+            <td style="background:{COLORS['bg']};padding:20px 18px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
-
-                <!-- Prospect cards -->
                 {cards_html}
-
-                <!-- Chart -->
                 {chart_section}
-
               </table>
             </td>
           </tr>
 
-          <!-- ── FOOTER ── -->
+          <!-- ── PIED DE PAGE : fond noir SG + SGBP Luxembourg ── -->
           <tr>
-            <td style="background:{COLORS['primary']};border-radius:0 0 10px 10px;
-                       padding:24px 36px;">
+            <td style="background:{COLORS['dark']};
+                       border-radius:0 0 4px 4px;
+                       padding:26px 36px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td>
-                    <p style="margin:0 0 8px;font-size:12px;
-                               color:rgba(255,255,255,0.6);line-height:1.6;">
-                      Cette newsletter est générée automatiquement à partir de sources publiques.
-                      Les informations sont fournies à titre indicatif.
-                      Veuillez vérifier les données avant tout contact commercial.
+                  <td style="vertical-align:top;">
+                    <!-- Identité SGBP -->
+                    <p style="margin:0 0 4px;font-size:13px;color:white;
+                               font-weight:800;letter-spacing:0.5px;">
+                      SGBP Luxembourg
                     </p>
-                    <p style="margin:0;font-size:11px;color:{COLORS['accent']};">
-                      HNWI Prospect Intelligence · Powered by AI
+                    <p style="margin:0 0 12px;font-size:11px;
+                               color:rgba(255,255,255,0.55);">
+                      Soci&eacute;t&eacute; G&eacute;n&eacute;rale Bank &amp; Trust S.A.
+                    </p>
+                    <p style="margin:0 0 14px;font-size:11px;
+                               color:rgba(255,255,255,0.4);line-height:1.7;">
+                      Cette newsletter est g&eacute;n&eacute;r&eacute;e automatiquement &agrave; partir
+                      de sources publiques. Les informations sont fournies &agrave; titre indicatif.
+                      Veuillez v&eacute;rifier les donn&eacute;es avant tout contact commercial.
+                    </p>
+                    <p style="margin:0;font-size:10px;
+                               color:rgba(255,255,255,0.25);
+                               border-top:1px solid rgba(255,255,255,0.1);
+                               padding-top:12px;letter-spacing:0.5px;">
+                      HNWI Prospect Intelligence &middot; Powered by AI
                     </p>
                   </td>
-                  <td align="right" style="vertical-align:bottom;">
+                  <td align="right" style="vertical-align:top;padding-left:24px;width:120px;">
+                    <!-- Mini marque SG dans le footer -->
+                    <table cellpadding="0" cellspacing="4" border="0" align="right">
+                      <tr>
+                        <td style="width:18px;height:18px;background:{COLORS['primary']};
+                                   border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+                        <td style="width:18px;height:18px;
+                                   background:rgba(255,255,255,0.15);
+                                   border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+                      </tr>
+                      <tr>
+                        <td style="width:18px;height:18px;
+                                   background:rgba(255,255,255,0.15);
+                                   border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+                        <td style="width:18px;height:18px;background:{COLORS['primary']};
+                                   border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
+                      </tr>
+                    </table>
+                    <br/><br/>
                     <a href="{{{{ unsubscribe_url }}}}"
-                       style="font-size:11px;color:rgba(255,255,255,0.5);
-                              text-decoration:underline;">
-                      Se désabonner
+                       style="font-size:11px;color:rgba(255,255,255,0.35);
+                              text-decoration:underline;white-space:nowrap;">
+                      Se d&eacute;sabonner
                     </a>
                   </td>
                 </tr>
@@ -425,6 +522,7 @@ def generate_newsletter_html(
       </td>
     </tr>
   </table>
+
 </body>
 </html>"""
 
