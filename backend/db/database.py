@@ -83,6 +83,19 @@ class SubscriberDB:
             return db.table(SubscriberDB.TABLE).all()
 
     @staticmethod
+    def set_active(email: str, active: bool = True) -> bool:
+        """Update the active status of an existing subscriber. Returns True if found."""
+        email = email.strip().lower()
+        with _get_db() as db:
+            table = db.table(SubscriberDB.TABLE)
+            Q = Query()
+            if not table.search(Q.email == email):
+                return False
+            table.update({"active": active}, Q.email == email)
+            logger.info(f"Subscriber {email} active={active}")
+            return True
+
+    @staticmethod
     def count_active() -> int:
         return len(SubscriberDB.get_active())
 

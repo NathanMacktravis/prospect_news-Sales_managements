@@ -1,6 +1,6 @@
 """
-Streamlit Frontend — HNWI Prospect Intelligence
-  - Email subscription form
+Streamlit Frontend — SGPB Prospect Intelligence
+  - Email subscription form with daily newsletter option
   - Newsletter preview (latest run)
   - Dashboard: prospect table + Plotly chart
   - Admin: trigger pipeline, view run logs
@@ -8,72 +8,102 @@ Streamlit Frontend — HNWI Prospect Intelligence
 
 from __future__ import annotations
 
+import base64
 import os
-import sys
 import re
-import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
 
-# Add project root to path so we can import backend modules
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
-# ── Page config (must be first Streamlit call) ────────────────────────────────
+# ── Logo path (défini avant set_page_config pour l'icône de l'onglet) ─────────
+_LOGO_PATH = ROOT / "data" / "sg-logo.png"
+
+# ── Page config (doit être le premier appel Streamlit) ────────────────────────
 st.set_page_config(
-    page_title="HNWI Prospect Intelligence",
-    page_icon="💎",
+    page_title="SGPB Prospect Intelligence",
+    page_icon=str(_LOGO_PATH) if _LOGO_PATH.exists() else None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# ── Logo base64 pour intégration sidebar ──────────────────────────────────────
+_LOGO_B64 = ""
+if _LOGO_PATH.exists():
+    with open(_LOGO_PATH, "rb") as _f:
+        _LOGO_B64 = base64.b64encode(_f.read()).decode()
+
+# ── CSS — Société Générale Private Banking ────────────────────────────────────
 st.markdown("""
 <style>
-  /* Primary colour overrides */
-  :root { --primary: #1A3C5E; --accent: #C9A84C; }
-  [data-testid="stSidebar"] { background: #1A3C5E !important; }
-  [data-testid="stSidebar"] * { color: white !important; }
-  [data-testid="stSidebar"] a { color: #C9A84C !important; }
-  .metric-card {
+  /* Sidebar */
+  [data-testid="stSidebar"] {
+    background: #1A1A1A !important;
+    border-right: 3px solid #E30613;
+  }
+  [data-testid="stSidebar"] p,
+  [data-testid="stSidebar"] span,
+  [data-testid="stSidebar"] label,
+  [data-testid="stSidebar"] div { color: rgba(255,255,255,0.82) !important; }
+  [data-testid="stSidebar"] a   { color: #E30613 !important; }
+  [data-testid="stSidebar"] hr  { border-color: rgba(255,255,255,0.12) !important; }
+
+  /* Boutons principaux */
+  .stButton > button,
+  [data-testid="stFormSubmitButton"] > button {
+    background: #E30613 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 2px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px !important;
+  }
+  .stButton > button:hover,
+  [data-testid="stFormSubmitButton"] > button:hover {
+    background: #B20010 !important;
+    border: none !important;
+  }
+
+  /* Champs texte */
+  .stTextInput input {
+    border: 1px solid #E0E0E0 !important;
+    border-radius: 2px !important;
+  }
+  .stTextInput input:focus {
+    border-color: #E30613 !important;
+    box-shadow: 0 0 0 2px rgba(227,6,19,0.08) !important;
+  }
+
+  /* Métriques */
+  [data-testid="stMetric"] {
     background: white;
-    border-radius: 8px;
-    padding: 20px;
-    border: 1px solid #DEE2E6;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-    text-align: center;
+    border: 1px solid #E0E0E0;
+    border-radius: 3px;
+    padding: 16px !important;
   }
-  .metric-card h2 { color: #1A3C5E; margin: 0 0 4px; font-size: 2rem; }
-  .metric-card p  { color: #6C757D; margin: 0; font-size: 13px; }
-  .prospect-card  {
-    background: white; border-radius: 8px;
-    padding: 16px 20px; margin-bottom: 12px;
-    border: 1px solid #DEE2E6;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-  }
-  .badge {
-    display: inline-block; padding: 2px 10px;
-    border-radius: 12px; font-size: 11px; font-weight: 700;
-  }
-  .score-pill {
-    display: inline-block; background: #1A3C5E; color: white;
-    border-radius: 20px; padding: 2px 12px; font-size: 13px;
-    font-weight: 700;
-  }
+  [data-testid="stMetricValue"] { color: #1A1A1A !important; }
+  [data-testid="stMetricLabel"] { color: #6B6B6B !important; font-size: 12px !important; }
+
+  /* Séparateurs */
+  hr { border-color: #E0E0E0 !important; margin: 1rem 0 !important; }
+  .block-container { padding-top: 1.5rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Lazy imports (only when DB exists) ───────────────────────────────────────
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _try_import_db():
     try:
         from backend.db.database import SubscriberDB, ProspectDB, RunLogDB
         return SubscriberDB, ProspectDB, RunLogDB
-    except Exception as e:
+    except Exception:
         return None, None, None
 
 
@@ -81,124 +111,210 @@ def _email_valid(email: str) -> bool:
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email.strip()))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SIDEBAR
-# ─────────────────────────────────────────────────────────────────────────────
+def _send_latest_newsletter_to(email: str) -> tuple[bool, str]:
+    """Reconstruit et envoie la dernière newsletter à une adresse unique."""
+    try:
+        from backend.processors.extractor import ProspectData
+        from backend.processors.scorer import ScoredProspect
+        from backend.newsletter.generator import generate_newsletter_html
+        from backend.newsletter.sender import NewsletterSender
 
+        _, ProspectDB_cls, _ = _try_import_db()
+        if ProspectDB_cls is None:
+            return False, "Base de données non disponible."
+
+        run_id, records = ProspectDB_cls.get_latest_run()
+        if not records:
+            return False, "Aucune newsletter disponible pour le moment."
+
+        prospects = []
+        for r in records:
+            pd = ProspectData(
+                name=r["name"], title=r["title"], company=r["company"],
+                sector=r["sector"], event_type=r["event_type"],
+                event_summary=r["event_summary"],
+                estimated_amount_usd=r.get("estimated_amount_usd"),
+                amount_label=r["amount_label"], location=r["location"],
+                source_url=r["source_url"], published_at=r.get("published_at"),
+                sales_pitch=r["sales_pitch"], urgency_score=r["urgency_score"],
+                confidence_score=r["confidence_score"],
+            )
+            prospects.append(ScoredProspect(
+                data=pd,
+                potential_score=r["potential_score"],
+                urgency_score=r["urgency_score"],
+                composite_rank=float(r["potential_score"]),
+            ))
+
+        run_date = datetime.strptime(run_id, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        html = generate_newsletter_html(prospects, date=run_date)
+
+        resend_key = os.getenv("RESEND_API_KEY", "").strip()
+        if not resend_key:
+            return False, "Clé RESEND_API_KEY absente — envoi impossible."
+
+        sender = NewsletterSender()
+        ok = sender.send_to_one(email, html)
+        return (
+            (True,  f"Newsletter du {run_id} envoyée avec succès.") if ok else
+            (False, "Échec de l'envoi (vérifiez la configuration Resend).")
+        )
+
+    except Exception as exc:
+        return False, f"Erreur : {exc}"
+
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### 💎 HNWI Intelligence")
+    # Logo SG sur fond blanc pour visibilité
+    if _LOGO_B64:
+        st.markdown(
+            f'<div style="background:white;border-radius:3px;padding:8px 14px;'
+            f'margin-bottom:14px;display:inline-block;">'
+            f'<img src="data:image/png;base64,{_LOGO_B64}" '
+            f'style="height:34px;display:block;" /></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        '<p style="margin:0 0 2px;font-size:10px;font-weight:700;'
+        'letter-spacing:1.5px;text-transform:uppercase;color:#E30613 !important;">'
+        'Private Banking</p>'
+        '<p style="margin:0 0 14px;font-size:13px;color:rgba(255,255,255,0.55) !important;">'
+        'Prospect Intelligence</p>',
+        unsafe_allow_html=True,
+    )
     st.markdown("---")
+
     page = st.radio(
         "Navigation",
-        ["🏠 Accueil & Inscription", "📊 Dashboard", "📧 Aperçu Newsletter", "⚙️ Admin"],
+        ["Accueil & Inscription", "Dashboard", "Apercu Newsletter", "Admin"],
         label_visibility="collapsed",
     )
     st.markdown("---")
+
     SubscriberDB, ProspectDB, RunLogDB = _try_import_db()
     if SubscriberDB:
         count = SubscriberDB.count_active()
-        st.markdown(f"**{count}** abonné(s) actif(s)")
         run_ids = ProspectDB.list_run_ids() if ProspectDB else []
+        st.markdown(
+            f'<p style="margin:4px 0;font-size:13px;">'
+            f'<strong style="color:white !important;">{count}</strong> '
+            f'<span style="color:rgba(255,255,255,0.5) !important;">abonné(s) actif(s)</span></p>',
+            unsafe_allow_html=True,
+        )
         if run_ids:
-            st.markdown(f"Dernière analyse: **{run_ids[0]}**")
-    st.markdown("---")
-    st.markdown(
-        "<small style='color:rgba(255,255,255,0.5)'>Powered by Claude AI · Resend · TinyDB</small>",
-        unsafe_allow_html=True,
-    )
+            st.markdown(
+                f'<p style="margin:4px 0;font-size:12px;'
+                f'color:rgba(255,255,255,0.4) !important;">'
+                f'Dernière analyse : <strong style="color:rgba(255,255,255,0.7) !important;">'
+                f'{run_ids[0]}</strong></p>',
+                unsafe_allow_html=True,
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PAGE: ACCUEIL & INSCRIPTION
+# PAGE : ACCUEIL & INSCRIPTION
 # ─────────────────────────────────────────────────────────────────────────────
+if "Accueil" in page:
 
-if "🏠 Accueil & Inscription" in page:
-    # Hero section
+    # ── Bandeau héro ──────────────────────────────────────────────────────────
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#1A3C5E,#2D5F8A);
-                border-radius:12px;padding:40px;margin-bottom:24px;text-align:center;">
-      <div style="font-size:48px;margin-bottom:12px;">💎</div>
-      <h1 style="color:white;margin:0 0 8px;font-size:32px;">HNWI Prospect Intelligence</h1>
-      <p style="color:rgba(255,255,255,0.8);font-size:16px;margin:0 0 20px;">
-        Détectez chaque jour les 5 meilleurs prospects HNWI/UHNWI via l'IA —
-        IPO, M&A, levées de fonds, nominations.
+    <div style="background:linear-gradient(135deg,#E30613 0%,#8B000A 100%);
+                border-radius:4px;padding:36px 40px;margin-bottom:28px;">
+      <p style="margin:0 0 6px;font-size:10px;font-weight:700;
+                color:rgba(255,255,255,0.55);letter-spacing:2px;text-transform:uppercase;">
+        Société Générale Private Banking
       </p>
-      <p style="color:#C9A84C;font-size:14px;font-weight:600;margin:0;">
-        Newsletter quotidienne · Sales-ready · Liens sources inclus
+      <h1 style="margin:0 0 10px;font-size:26px;font-weight:800;
+                 color:white;letter-spacing:0.3px;">
+        HNWI Prospect Intelligence
+      </h1>
+      <p style="margin:0 0 16px;color:rgba(255,255,255,0.85);
+                font-size:15px;line-height:1.75;max-width:600px;">
+        Détectez chaque jour les 5 meilleurs prospects HNWI/UHNWI via l'IA —
+        IPO, M&amp;A, levées de fonds, nominations.
+      </p>
+      <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.5);
+                letter-spacing:1px;text-transform:uppercase;">
+        Newsletter quotidienne &middot; Sales-ready &middot; Sources incluses
       </p>
     </div>
     """, unsafe_allow_html=True)
 
-    # Value props
-    col1, col2, col3, col4 = st.columns(4)
-    for col, icon, label, desc in [
-        (col1, "🔍", "Collecte Auto", "Tavily + RSS financiers"),
-        (col2, "🧠", "IA Claude", "Extraction & scoring LLM"),
-        (col3, "📈", "Score 0–100", "Potentiel + Urgence"),
-        (col4, "📧", "Newsletter", "Envoi quotidien 7h UTC"),
-    ]:
-        with col:
-            st.markdown(f"""
-            <div class="metric-card">
-              <div style="font-size:28px;margin-bottom:8px;">{icon}</div>
-              <strong style="color:#1A3C5E;">{label}</strong>
-              <p>{desc}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Subscription form ─────────────────────────────────────────────────────
-    st.markdown("### ✉️ Recevoir la newsletter quotidienne")
-    st.markdown("Entrez votre adresse email pour recevoir chaque matin les 5 meilleurs prospects HNWI.")
+    # ── Formulaire d'inscription ──────────────────────────────────────────────
+    st.markdown("### Recevoir la newsletter")
+    st.markdown(
+        '<p style="color:#6B6B6B;font-size:14px;margin-bottom:4px;">'
+        'Entrez votre adresse email pour recevoir la newsletter du jour. '
+        'Cochez la case ci-dessous pour vous abonner aux envois quotidiens automatiques.</p>',
+        unsafe_allow_html=True,
+    )
 
     with st.form("subscribe_form", clear_on_submit=True):
-        col_email, col_btn = st.columns([3, 1])
-        with col_email:
-            email_input = st.text_input(
-                "Email",
-                placeholder="vous@exemple.com",
-                label_visibility="collapsed",
-            )
-        with col_btn:
-            submitted = st.form_submit_button("S'inscrire 🚀", use_container_width=True)
+        email_input = st.text_input(
+            "Adresse email",
+            placeholder="prenom.nom@societe.com",
+        )
+        daily_subscribe = st.checkbox(
+            "M'abonner à la newsletter quotidienne (envoi automatique chaque matin à 7h UTC)",
+            value=False,
+        )
+        submitted = st.form_submit_button(
+            "S'inscrire et recevoir la newsletter du jour",
+            use_container_width=True,
+        )
 
         if submitted:
             email_clean = email_input.strip().lower()
             if not email_clean:
-                st.error("Veuillez entrer votre email.")
+                st.error("Veuillez entrer votre adresse email.")
             elif not _email_valid(email_clean):
-                st.error("Email invalide. Veuillez vérifier le format.")
+                st.error("Adresse email invalide. Veuillez vérifier le format.")
             elif SubscriberDB is None:
                 st.warning("Base de données non disponible. Vérifiez la configuration.")
             else:
-                added = SubscriberDB.add(email_clean)
-                if added:
-                    st.success(f"🎉 {email_clean} inscrit avec succès ! Vous recevrez la prochaine newsletter.")
+                # Gestion de l'abonnement quotidien
+                if daily_subscribe:
+                    added = SubscriberDB.add(email_clean)
+                    if added:
+                        sub_msg = f"{email_clean} abonné(e) à la newsletter quotidienne."
+                    else:
+                        SubscriberDB.set_active(email_clean, True)
+                        sub_msg = f"{email_clean} : abonnement quotidien confirmé."
                 else:
-                    st.info(f"📌 {email_clean} est déjà inscrit.")
+                    sub_msg = "Envoi unique — aucun abonnement quotidien enregistré."
 
-    # ── Unsubscribe section ───────────────────────────────────────────────────
+                # Envoi de la newsletter du jour dans tous les cas
+                ok, send_msg = _send_latest_newsletter_to(email_clean)
+                if ok:
+                    st.success(f"{sub_msg} {send_msg}")
+                else:
+                    st.info(sub_msg)
+                    st.warning(f"Newsletter du jour non envoyée : {send_msg}")
+
+    # ── Se désabonner ─────────────────────────────────────────────────────────
     with st.expander("Se désabonner"):
         with st.form("unsubscribe_form", clear_on_submit=True):
-            unsub_email = st.text_input("Email à désabonner", label_visibility="collapsed",
-                                         placeholder="votre@email.com")
+            unsub_email = st.text_input(
+                "Adresse email à désabonner",
+                placeholder="votre@email.com",
+            )
             unsub_btn = st.form_submit_button("Se désabonner")
             if unsub_btn and unsub_email:
                 if SubscriberDB:
                     removed = SubscriberDB.remove(unsub_email.strip().lower())
                     if removed:
-                        st.success("Vous avez été désabonné.")
+                        st.success("Adresse désabonnée avec succès.")
                     else:
-                        st.warning("Email non trouvé.")
+                        st.warning("Adresse introuvable dans la base d'abonnés.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PAGE: DASHBOARD
+# PAGE : DASHBOARD
 # ─────────────────────────────────────────────────────────────────────────────
-
-elif "📊 Dashboard" in page:
-    st.markdown("## 📊 Dashboard Prospects")
+elif "Dashboard" in page:
+    st.markdown("## Dashboard Prospects")
 
     if ProspectDB is None:
         st.warning("Base de données non disponible.")
@@ -206,10 +322,9 @@ elif "📊 Dashboard" in page:
 
     run_ids = ProspectDB.list_run_ids()
     if not run_ids:
-        st.info("Aucune analyse effectuée pour le moment. Lancez le pipeline via l'onglet Admin.")
+        st.info("Aucune analyse effectuée. Lancez le pipeline via l'onglet Admin.")
         st.stop()
 
-    # Run selector
     selected_run = st.selectbox("Sélectionner une analyse", run_ids, index=0)
     records = ProspectDB.get_run(selected_run)
 
@@ -217,39 +332,36 @@ elif "📊 Dashboard" in page:
         st.info("Aucun prospect pour cette date.")
         st.stop()
 
-    # ── KPI row ───────────────────────────────────────────────────────────────
+    # ── KPIs ──────────────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     top = records[0] if records else {}
     avg_score = round(sum(r["potential_score"] for r in records) / len(records)) if records else 0
     total_amount = sum(r.get("estimated_amount_usd") or 0 for r in records)
-
-    with c1:
-        st.metric("Prospects détectés", len(records))
-    with c2:
-        st.metric("Score moyen", f"{avg_score}/100")
-    with c3:
-        st.metric("Top prospect", top.get("name", "—"))
-    with c4:
-        amount_label = f"${total_amount/1e9:.1f}B" if total_amount >= 1e9 else \
-                       f"${total_amount/1e6:.0f}M" if total_amount >= 1e6 else "N/A"
-        st.metric("Volume total estimé", amount_label)
+    amount_label = (
+        f"${total_amount/1e9:.1f}B" if total_amount >= 1e9 else
+        f"${total_amount/1e6:.0f}M" if total_amount >= 1e6 else "N/A"
+    )
+    with c1: st.metric("Prospects détectés", len(records))
+    with c2: st.metric("Score moyen", f"{avg_score}/100")
+    with c3: st.metric("Top prospect", top.get("name", "—"))
+    with c4: st.metric("Volume total estimé", amount_label)
 
     st.markdown("---")
 
-    # ── Plotly chart ──────────────────────────────────────────────────────────
+    # ── Graphique ─────────────────────────────────────────────────────────────
     try:
         import plotly.graph_objects as go
-
-        names = [r["name"].split()[0] + " " + (r["name"].split()[-1] if len(r["name"].split()) > 1 else "")
-                 for r in records]
+        names = [
+            r["name"].split()[0] + " " + (r["name"].split()[-1] if len(r["name"].split()) > 1 else "")
+            for r in records
+        ]
         names = [n[:18] + "…" if len(n) > 18 else n for n in names]
-
         fig = go.Figure()
         fig.add_trace(go.Bar(
             name="Potentiel (0-100)",
             x=names,
             y=[r["potential_score"] for r in records],
-            marker_color="#1A3C5E",
+            marker_color="#E30613",
             text=[r["potential_score"] for r in records],
             textposition="outside",
         ))
@@ -257,7 +369,7 @@ elif "📊 Dashboard" in page:
             name="Urgence (×10)",
             x=names,
             y=[r["urgency_score"] * 10 for r in records],
-            marker_color="#C9A84C",
+            marker_color="#1A1A1A",
             text=[r["urgency_score"] * 10 for r in records],
             textposition="outside",
         ))
@@ -276,52 +388,65 @@ elif "📊 Dashboard" in page:
 
     st.markdown("---")
 
-    # ── Prospect cards ────────────────────────────────────────────────────────
-    BADGE_COLORS = {
-        "IPO": "🔵", "M&A": "🟣", "Fundraising": "🟢",
-        "Exit": "🟡", "Appointment": "🟠", "Other": "⚫",
+    # ── Cartes prospects ──────────────────────────────────────────────────────
+    EVENT_COLORS = {
+        "IPO":         ("#FFFFFF", "#E30613"),
+        "M&A":         ("#FFFFFF", "#1A1A1A"),
+        "Fundraising": ("#B20010", "#FAE5E6"),
+        "Exit":        ("#1A1A1A", "#EFEFEF"),
+        "Appointment": ("#FFFFFF", "#B20010"),
+        "Other":       ("#6B6B6B", "#F0F0F0"),
     }
 
     for r in records:
-        icon = BADGE_COLORS.get(r["event_type"], "⚫")
+        txt_c, bg_c = EVENT_COLORS.get(r["event_type"], ("#6B6B6B", "#F0F0F0"))
+        badge_html = (
+            f'<span style="background:{bg_c};color:{txt_c};padding:2px 8px;'
+            f'border-radius:2px;font-size:10px;font-weight:700;'
+            f'text-transform:uppercase;letter-spacing:0.5px;">'
+            f'{r["event_type"]}</span>'
+        )
+        rank_c = "#E30613" if r["rank"] == 1 else ("#B20010" if r["rank"] <= 3 else "#6B6B6B")
+
         with st.container():
             col_rank, col_main, col_score = st.columns([1, 6, 2])
             with col_rank:
                 st.markdown(
-                    f"<div style='text-align:center;font-size:32px;font-weight:800;"
-                    f"color:#1A3C5E;'>{r['rank']}</div>",
+                    f'<div style="text-align:center;font-size:28px;font-weight:800;'
+                    f'color:{rank_c};">{r["rank"]}</div>',
                     unsafe_allow_html=True,
                 )
             with col_main:
                 st.markdown(
-                    f"**{r['name']}** {icon} `{r['event_type']}` · {r['company']}"
+                    f'**{r["name"]}** &nbsp; {badge_html} &nbsp; {r["company"]}',
+                    unsafe_allow_html=True,
                 )
                 st.markdown(
-                    f"<small style='color:#6C757D'>{r['title']} · {r['location']} · "
-                    f"<strong style='color:#C9A84C'>{r['amount_label']}</strong></small>",
+                    f'<small style="color:#6B6B6B;">{r["title"]} &middot; {r["location"]}'
+                    f' &middot; <strong style="color:#E30613;">{r["amount_label"]}</strong></small>',
                     unsafe_allow_html=True,
                 )
                 st.markdown(r["event_summary"])
                 st.markdown(
-                    f"<div style='background:#F0F4F8;border-left:3px solid #C9A84C;"
-                    f"padding:8px 12px;border-radius:0 4px 4px 0;font-size:13px;"
-                    f"color:#1A3C5E;'>"
-                    f"💡 <em>{r['sales_pitch']}</em></div>",
+                    f'<div style="background:#FBF5F5;border-left:4px solid #E30613;'
+                    f'padding:10px 14px;border-radius:0 3px 3px 0;font-size:13px;color:#1A1A1A;">'
+                    f'<strong style="font-size:10px;letter-spacing:1px;text-transform:uppercase;'
+                    f'color:#E30613;">Insight commercial</strong><br/>'
+                    f'<em>{r["sales_pitch"]}</em></div>',
                     unsafe_allow_html=True,
                 )
-                st.markdown(f"[🔗 Source]({r['source_url']})")
+                st.markdown(f'[Consulter la source]({r["source_url"]})')
             with col_score:
-                st.metric("Score", f"{r['potential_score']}/100")
-                st.metric("Urgence", f"{r['urgency_score']}/10")
+                st.metric("Score", f'{r["potential_score"]}/100')
+                st.metric("Urgence", f'{r["urgency_score"]}/10')
         st.markdown("---")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PAGE: APERÇU NEWSLETTER
+# PAGE : APERCU NEWSLETTER
 # ─────────────────────────────────────────────────────────────────────────────
-
-elif "📧 Aperçu Newsletter" in page:
-    st.markdown("## 📧 Aperçu de la Dernière Newsletter")
+elif "Apercu" in page:
+    st.markdown("## Aperçu de la Dernière Newsletter")
 
     if ProspectDB is None:
         st.warning("Base de données non disponible.")
@@ -333,30 +458,23 @@ elif "📧 Aperçu Newsletter" in page:
         st.info("Aucune newsletter générée. Lancez le pipeline dans l'onglet Admin.")
         st.stop()
 
-    st.success(f"Dernière analyse : **{run_id}** · {len(records)} prospects")
+    st.success(f"Dernière analyse : **{run_id}** — {len(records)} prospects")
 
-    # Regenerate the HTML for preview
     try:
         from backend.processors.extractor import ProspectData
-        from backend.processors.scorer import ScoredProspect, score_prospect
+        from backend.processors.scorer import ScoredProspect
         from backend.newsletter.generator import generate_newsletter_html
 
         prospects_data = []
         for r in records:
             pd = ProspectData(
-                name=r["name"],
-                title=r["title"],
-                company=r["company"],
-                sector=r["sector"],
-                event_type=r["event_type"],
+                name=r["name"], title=r["title"], company=r["company"],
+                sector=r["sector"], event_type=r["event_type"],
                 event_summary=r["event_summary"],
                 estimated_amount_usd=r.get("estimated_amount_usd"),
-                amount_label=r["amount_label"],
-                location=r["location"],
-                source_url=r["source_url"],
-                published_at=r.get("published_at"),
-                sales_pitch=r["sales_pitch"],
-                urgency_score=r["urgency_score"],
+                amount_label=r["amount_label"], location=r["location"],
+                source_url=r["source_url"], published_at=r.get("published_at"),
+                sales_pitch=r["sales_pitch"], urgency_score=r["urgency_score"],
                 confidence_score=r["confidence_score"],
             )
             sp = ScoredProspect(
@@ -371,7 +489,7 @@ elif "📧 Aperçu Newsletter" in page:
         html = generate_newsletter_html(prospects_data, date=run_date)
 
         st.download_button(
-            "📥 Télécharger la newsletter HTML",
+            "Télécharger la newsletter HTML",
             data=html,
             file_name=f"newsletter_{run_id}.html",
             mime="text/html",
@@ -379,85 +497,85 @@ elif "📧 Aperçu Newsletter" in page:
         st.components.v1.html(html, height=900, scrolling=True)
 
     except Exception as e:
-        st.error(f"Erreur lors de la génération de l'aperçu: {e}")
+        st.error(f"Erreur lors de la génération de l'aperçu : {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PAGE: ADMIN
+# PAGE : ADMIN
 # ─────────────────────────────────────────────────────────────────────────────
+elif "Admin" in page:
+    st.markdown("## Administration")
 
-elif "⚙️ Admin" in page:
-    st.markdown("## ⚙️ Administration")
-
-    # ── API Keys status ───────────────────────────────────────────────────────
-    st.markdown("### 🔑 Configuration des APIs")
-    cols = st.columns(3)
-    keys = [
+    # ── Statut APIs ───────────────────────────────────────────────────────────
+    st.markdown("### Configuration des APIs")
+    api_cols = st.columns(3)
+    for col, (key_name, label) in zip(api_cols, [
         ("ANTHROPIC_API_KEY", "Claude API"),
-        ("TAVILY_API_KEY", "Tavily Search"),
-        ("RESEND_API_KEY", "Resend Email"),
-    ]
-    for col, (key_name, label) in zip(cols, keys):
+        ("TAVILY_API_KEY",    "Tavily Search"),
+        ("RESEND_API_KEY",    "Resend Email"),
+    ]):
         with col:
             val = os.getenv(key_name, "")
-            status = "✅ Configuré" if val else "❌ Manquant"
-            color = "#28A745" if val else "#DC3545"
+            ok  = bool(val)
+            color  = "#2E7D32" if ok else "#C62828"
+            status = "Configuré"  if ok else "Manquant"
             st.markdown(
-                f"<div style='padding:12px;background:white;border-radius:6px;"
-                f"border:1px solid #DEE2E6;'>"
-                f"<strong>{label}</strong><br>"
-                f"<span style='color:{color};font-size:13px;'>{status}</span>"
-                f"</div>",
+                f'<div style="padding:14px;background:white;border-radius:3px;'
+                f'border:1px solid #E0E0E0;border-left:4px solid {color};">'
+                f'<strong style="font-size:13px;">{label}</strong><br/>'
+                f'<span style="color:{color};font-size:12px;font-weight:600;">{status}</span>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
     st.markdown("---")
 
-    # ── Run pipeline ──────────────────────────────────────────────────────────
-    st.markdown("### 🚀 Lancer le Pipeline")
-
+    # ── Pipeline ──────────────────────────────────────────────────────────────
+    st.markdown("### Lancer le Pipeline")
     col_a, col_b = st.columns(2)
 
     with col_a:
         st.markdown("**Dry Run** (sans envoi d'emails)")
-        if st.button("▶️ Lancer le pipeline (dry run)", use_container_width=True):
+        if st.button("Lancer le pipeline (dry run)", use_container_width=True):
             with st.spinner("Pipeline en cours..."):
                 try:
                     from backend.pipeline import run_pipeline
                     result = run_pipeline(dry_run=True)
                     if result.success:
                         st.success(
-                            f"✅ Succès! {result.articles_collected} articles collectés, "
+                            f"Succès — {result.articles_collected} articles collectés, "
                             f"{result.articles_signaled} signalés, "
                             f"{result.prospects_ranked} prospects."
                         )
                     else:
-                        st.error(f"❌ Échec: {result.error}")
+                        st.error(f"Échec : {result.error}")
                 except Exception as e:
-                    st.error(f"Erreur: {e}")
+                    st.error(f"Erreur : {e}")
 
     with col_b:
-        st.markdown("**Test Email** (envoyer à une seule adresse)")
-        test_email = st.text_input("Email de test", placeholder="test@example.com")
-        if st.button("📧 Envoyer email de test", use_container_width=True) and test_email:
-            if not _email_valid(test_email):
-                st.error("Email invalide")
+        st.markdown("**Email de test** (envoi à une seule adresse)")
+        test_email_input = st.text_input(
+            "Email de test", placeholder="test@example.com",
+        )
+        if st.button("Envoyer un email de test", use_container_width=True) and test_email_input:
+            if not _email_valid(test_email_input):
+                st.error("Adresse email invalide.")
             else:
                 with st.spinner("Envoi en cours..."):
                     try:
                         from backend.pipeline import run_pipeline
-                        result = run_pipeline(test_email=test_email.strip())
+                        result = run_pipeline(test_email=test_email_input.strip())
                         if result.success:
-                            st.success(f"✅ Email de test envoyé à {test_email}")
+                            st.success(f"Email de test envoyé à {test_email_input}.")
                         else:
-                            st.error(f"❌ Échec: {result.error}")
+                            st.error(f"Échec : {result.error}")
                     except Exception as e:
-                        st.error(f"Erreur: {e}")
+                        st.error(f"Erreur : {e}")
 
     st.markdown("---")
 
-    # ── Subscribers management ────────────────────────────────────────────────
-    st.markdown("### 👥 Abonnés")
+    # ── Abonnés ───────────────────────────────────────────────────────────────
+    st.markdown("### Abonnés")
     if SubscriberDB:
         all_subs = SubscriberDB.get_all()
         if all_subs:
@@ -470,15 +588,17 @@ elif "⚙️ Admin" in page:
 
     st.markdown("---")
 
-    # ── Run logs ──────────────────────────────────────────────────────────────
-    st.markdown("### 📋 Historique des runs")
+    # ── Historique des runs ───────────────────────────────────────────────────
+    st.markdown("### Historique des runs")
     if RunLogDB:
         logs = RunLogDB.get_recent(limit=10)
         if logs:
             import pandas as pd
             df_log = pd.DataFrame(logs)
-            df_log = df_log[["run_id", "timestamp", "prospect_count",
-                              "sent_count", "status", "error"]]
+            df_log = df_log[[
+                "run_id", "timestamp", "prospect_count",
+                "sent_count", "status", "error",
+            ]]
             df_log.columns = ["Run ID", "Date", "Prospects", "Envoyés", "Statut", "Erreur"]
             st.dataframe(df_log, use_container_width=True)
         else:
