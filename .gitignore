@@ -1,0 +1,31 @@
+# Environment
+.env
+.env.local
+
+# Data (TinyDB)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# MacOS
+.DS_Store
+
+# Logs
+*.log
+
+# clés API 
+.env.example
