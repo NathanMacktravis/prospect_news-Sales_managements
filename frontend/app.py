@@ -12,7 +12,7 @@ import base64
 import os
 import re
 import sys
-from datetime import datetime, timezone
+
 from pathlib import Path
 
 import streamlit as st
@@ -146,8 +146,7 @@ def _send_latest_newsletter_to(email: str) -> tuple[bool, str]:
                 composite_rank=float(r["potential_score"]),
             ))
 
-        run_date = datetime.strptime(run_id, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        html = generate_newsletter_html(prospects, date=run_date)
+        html = generate_newsletter_html(prospects)  # date = aujourd'hui
 
         resend_key = os.getenv("RESEND_API_KEY", "").strip()
         if not resend_key:
@@ -485,8 +484,7 @@ elif "Apercu" in page:
             )
             prospects_data.append(sp)
 
-        run_date = datetime.strptime(run_id, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        html = generate_newsletter_html(prospects_data, date=run_date)
+        html = generate_newsletter_html(prospects_data)  # date = aujourd'hui
 
         st.download_button(
             "Télécharger la newsletter HTML",

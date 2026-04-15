@@ -2,8 +2,11 @@
 .env
 .env.local
 
-# Data (TinyDB)
-data/
+# Data — fichiers générés à l'exécution (exclus du repo)
+# Note : data/ n'est PAS ignoré en entier pour permettre de versionner sg-logo.png
+data/db.json
+data/newsletter_*.html
+data/test_*.html
 
 # Python
 __pycache__/

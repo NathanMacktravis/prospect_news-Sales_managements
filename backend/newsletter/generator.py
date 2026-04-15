@@ -62,6 +62,14 @@ try:
         ' alt="Soci\u00e9t\u00e9 G\u00e9n\u00e9rale"'
         ' height="50" style="display:block;max-width:240px;" />'
     )
+    # Version réduite pour le footer (fond blanc pour visibilité sur fond sombre)
+    _SG_LOGO_FOOTER = (
+        '<div style="background:white;border-radius:3px;padding:5px 10px;display:inline-block;">'
+        '<img src="data:image/png;base64,' + _SG_LOGO_B64 + '"'
+        ' alt="Soci\u00e9t\u00e9 G\u00e9n\u00e9rale"'
+        ' height="30" style="display:block;max-width:150px;" />'
+        '</div>'
+    )
 except Exception as _e:
     logger.warning("Logo SG introuvable (%s) — fallback logo textuel", _e)
     _SG_LOGO_IMG = (
@@ -69,6 +77,7 @@ except Exception as _e:
         'letter-spacing:2px;font-family:Arial,Helvetica,sans-serif;">'
         'SOCI\u00c9T\u00c9 G\u00c9N\u00c9RALE</p>'
     )
+    _SG_LOGO_FOOTER = _SG_LOGO_IMG
 
 
 def _event_badge(event_type: str) -> str:
@@ -480,25 +489,9 @@ def generate_newsletter_html(
                       HNWI Prospect Intelligence &middot; Powered by AI
                     </p>
                   </td>
-                  <td align="right" style="vertical-align:top;padding-left:24px;width:120px;">
-                    <!-- Mini marque SG dans le footer -->
-                    <table cellpadding="0" cellspacing="4" border="0" align="right">
-                      <tr>
-                        <td style="width:18px;height:18px;background:{COLORS['primary']};
-                                   border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-                        <td style="width:18px;height:18px;
-                                   background:rgba(255,255,255,0.15);
-                                   border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-                      </tr>
-                      <tr>
-                        <td style="width:18px;height:18px;
-                                   background:rgba(255,255,255,0.15);
-                                   border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-                        <td style="width:18px;height:18px;background:{COLORS['primary']};
-                                   border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-                      </tr>
-                    </table>
-                    <br/><br/>
+                  <td align="right" style="vertical-align:top;padding-left:24px;width:160px;">
+                    {_SG_LOGO_FOOTER}
+                    <br/>
                     <a href="{{{{ unsubscribe_url }}}}"
                        style="font-size:11px;color:rgba(255,255,255,0.35);
                               text-decoration:underline;white-space:nowrap;">
