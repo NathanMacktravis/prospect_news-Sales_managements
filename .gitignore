@@ -28,4 +28,4 @@ build/
 *.log
 
 # clés API 
-.env.example
+.env

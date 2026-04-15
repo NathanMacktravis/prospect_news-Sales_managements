@@ -155,7 +155,13 @@ def run_pipeline(
         logger.info("Step 5/5 — Generating newsletter...")
         newsletter_html = generate_newsletter_html(top_prospects, date=run_date)
         result.newsletter_html = newsletter_html
-        logger.info("  → HTML newsletter generated")
+
+        # Toujours sauvegarder le HTML sur disque (dry-run ou pas)
+        html_path = Path(os.getenv("DB_PATH", "data/db.json")).parent / f"newsletter_{result.run_id}.html"
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(newsletter_html, encoding="utf-8")
+        logger.info(f"  → Newsletter HTML sauvegardée : {html_path}")
+        logger.info(f"    Ouvrir dans le navigateur : open {html_path}")
 
         if dry_run:
             logger.info("DRY RUN — skipping DB write and email send")
@@ -166,24 +172,45 @@ def run_pipeline(
         ProspectDB.save_run(top_prospects, run_date=run_date)
 
         # ── Send emails ───────────────────────────────────────────────────────
-        if send_emails and os.getenv("RESEND_API_KEY"):
+        resend_key = os.getenv("RESEND_API_KEY", "").strip()
+        from_email  = os.getenv("FROM_EMAIL", "").strip()
+
+        if not send_emails:
+            logger.info("Envoi email désactivé (--dry-run).")
+        elif not resend_key:
+            logger.warning(
+                "⚠️  RESEND_API_KEY absente du .env — email ignoré.\n"
+                "   → Créez un compte sur https://resend.com (gratuit) et copiez la clé."
+            )
+        elif not from_email:
+            logger.warning(
+                "⚠️  FROM_EMAIL absent du .env — email ignoré.\n"
+                "   → Pour tester sans domaine propre : FROM_EMAIL=onboarding@resend.dev"
+            )
+        else:
             sender = NewsletterSender()
 
             if test_email:
-                logger.info(f"Sending test email to {test_email}...")
+                logger.info(f"Envoi email de test à {test_email}…")
                 ok = sender.send_test(test_email, newsletter_html)
                 result.recipients_count = 1
                 result.sent_count = 1 if ok else 0
+                if not ok:
+                    logger.warning(
+                        "⚠️  Échec de l'envoi. Causes fréquentes :\n"
+                        "   1. Domaine FROM_EMAIL non vérifié sur resend.com\n"
+                        "   2. RESEND_API_KEY invalide ou révoquée\n"
+                        "   → Solution rapide : FROM_EMAIL=onboarding@resend.dev"
+                    )
             else:
                 recipients = SubscriberDB.get_active()
                 result.recipients_count = len(recipients)
-                logger.info(f"Sending to {result.recipients_count} subscribers...")
-
                 if recipients:
+                    logger.info(f"Envoi à {result.recipients_count} abonné(s)…")
                     send_result = sender.send_to_many(recipients, newsletter_html, date=run_date)
                     result.sent_count = send_result.sent_count
                 else:
-                    logger.info("No active subscribers — skipping send")
+                    logger.info("Aucun abonné actif — envoi ignoré.")
 
             RunLogDB.log(
                 run_id=result.run_id,
@@ -193,8 +220,6 @@ def run_pipeline(
                 failed_count=result.recipients_count - result.sent_count,
                 status="success",
             )
-        else:
-            logger.info("Email sending disabled or no RESEND_API_KEY — skipping")
 
         result.success = True
         logger.info(f"═══ Pipeline completed successfully ═══")

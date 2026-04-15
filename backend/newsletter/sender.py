@@ -83,12 +83,21 @@ class NewsletterSender:
                 timeout=15,
             )
             if resp.status_code in (200, 201):
-                logger.info(f"Email sent to {recipient_email}")
+                logger.info(f"✅ Email envoyé à {recipient_email}")
                 return True
             else:
+                # Extraire le message d'erreur Resend si possible
+                try:
+                    err = resp.json()
+                    err_msg = err.get("message") or err.get("error") or resp.text[:300]
+                except Exception:
+                    err_msg = resp.text[:300]
+
                 logger.warning(
-                    f"Failed to send to {recipient_email}: "
-                    f"HTTP {resp.status_code} — {resp.text[:200]}"
+                    f"❌ Échec envoi à {recipient_email} — "
+                    f"HTTP {resp.status_code} : {err_msg}\n"
+                    f"   Vérifiez : 1) domaine FROM_EMAIL vérifié sur resend.com "
+                    f"2) RESEND_API_KEY valide 3) ou utilisez FROM_EMAIL=onboarding@resend.dev"
                 )
                 return False
         except Exception as e:
