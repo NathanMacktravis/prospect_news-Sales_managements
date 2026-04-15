@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -48,35 +49,26 @@ EVENT_BADGE_COLORS = {
     "Other":        ("#6B6B6B", "#F0F0F0"),
 }
 
-# ─── SG logo mark — HTML tables (compatible tous clients email) ───────────────
-# Deux colonnes : marque 2×2 carrés + raison sociale
+# ─── SG logo : chargement de data/sg-logo.png (embarqué en base64) ──────────
+# Fallback sur une marque HTML si le fichier est absent.
 
-_SG_LOGO_HTML = """<table cellpadding="0" cellspacing="0" border="0">
-  <tr>
-    <td style="vertical-align:middle;padding-right:16px;">
-      <table cellpadding="0" cellspacing="4" border="0">
-        <tr>
-          <td style="width:20px;height:20px;background:white;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-          <td style="width:20px;height:20px;background:#1A1A1A;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-        </tr>
-        <tr>
-          <td style="width:20px;height:20px;background:#1A1A1A;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-          <td style="width:20px;height:20px;background:white;border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-        </tr>
-      </table>
-    </td>
-    <td style="vertical-align:middle;">
-      <p style="margin:0 0 2px;font-size:15px;font-weight:800;color:white;
-                 letter-spacing:2px;line-height:1;font-family:Arial,Helvetica,sans-serif;">
-        SOCI&Eacute;T&Eacute;
-      </p>
-      <p style="margin:0;font-size:15px;font-weight:800;color:white;
-                 letter-spacing:2px;line-height:1;font-family:Arial,Helvetica,sans-serif;">
-        G&Eacute;N&Eacute;RALE
-      </p>
-    </td>
-  </tr>
-</table>"""
+_LOGO_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "sg-logo.png"
+
+try:
+    with open(_LOGO_PATH, "rb") as _f:
+        _SG_LOGO_B64 = base64.b64encode(_f.read()).decode("utf-8")
+    _SG_LOGO_IMG = (
+        '<img src="data:image/png;base64,' + _SG_LOGO_B64 + '"'
+        ' alt="Soci\u00e9t\u00e9 G\u00e9n\u00e9rale"'
+        ' height="50" style="display:block;max-width:240px;" />'
+    )
+except Exception as _e:
+    logger.warning("Logo SG introuvable (%s) — fallback logo textuel", _e)
+    _SG_LOGO_IMG = (
+        '<p style="margin:0;font-size:15px;font-weight:800;color:white;'
+        'letter-spacing:2px;font-family:Arial,Helvetica,sans-serif;">'
+        'SOCI\u00c9T\u00c9 G\u00c9N\u00c9RALE</p>'
+    )
 
 
 def _event_badge(event_type: str) -> str:
@@ -398,7 +390,7 @@ def generate_newsletter_html(
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="vertical-align:middle;">
-                    {_SG_LOGO_HTML}
+                    {_SG_LOGO_IMG}
                   </td>
                   <td align="right" style="vertical-align:middle;">
                     <p style="margin:0 0 3px;font-size:10px;
@@ -473,7 +465,7 @@ def generate_newsletter_html(
                     </p>
                     <p style="margin:0 0 12px;font-size:11px;
                                color:rgba(255,255,255,0.55);">
-                      Soci&eacute;t&eacute; G&eacute;n&eacute;rale Bank &amp; Trust S.A.
+                      Soci&eacute;t&eacute; G&eacute;n&eacute;rale Private Banking
                     </p>
                     <p style="margin:0 0 14px;font-size:11px;
                                color:rgba(255,255,255,0.4);line-height:1.7;">
