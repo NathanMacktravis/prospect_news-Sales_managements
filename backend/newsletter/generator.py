@@ -81,7 +81,7 @@ def _event_badge(event_type: str) -> str:
     )
 
 
-def _score_bar(score: int, label: str = "Potentiel") -> str:
+def _score_bar(score: int, label: str = "Potentiel: ") -> str:
     """Render a mini progress bar for the score."""
     if score >= 80:
         color = COLORS["success"]
@@ -417,7 +417,7 @@ def generate_newsletter_html(
                   <td style="vertical-align:middle;">
                     <h1 style="margin:0;font-size:20px;color:white;
                                font-weight:800;letter-spacing:0.5px;">
-                      Top 5 Prospects HNWI du Jour
+                      Top 5 Prospects - Sales Management
                     </h1>
                   </td>
                   <td align="right" style="vertical-align:middle;">
