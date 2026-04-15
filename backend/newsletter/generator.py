@@ -24,7 +24,7 @@ except ImportError:
 
 from backend.processors.scorer import ScoredProspect
 
-# ─── Société Générale colour palette ──────────────────────────────────────────
+# ─── Colour palette ───────────────────────────────────────────────────────────
 
 COLORS = {
     "primary":  "#E30613",   # SG rouge institutionnel
@@ -90,7 +90,7 @@ def _event_badge(event_type: str) -> str:
     )
 
 
-def _score_bar(score: int, label: str = "Potentiel: ") -> str:
+def _score_bar(score: int, label: str = "Potential") -> str:
     """Render a mini progress bar for the score."""
     if score >= 80:
         color = COLORS["success"]
@@ -122,7 +122,7 @@ def _urgency_dots(urgency: int) -> str:
     for i in range(dots_total):
         color = COLORS["primary"] if i < filled else "#E0E0E0"
         dots_html += f'<span style="color:{color};font-size:13px;">&#9679;</span>'
-    return f'<span title="Urgence: {urgency}/10" style="letter-spacing:2px;">{dots_html}</span>'
+    return f'<span title="Urgency: {urgency}/10" style="letter-spacing:2px;">{dots_html}</span>'
 
 
 def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
@@ -145,7 +145,7 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
         fig = go.Figure()
 
         fig.add_trace(go.Bar(
-            name="Potentiel Wealth",
+            name="Wealth Potential",
             x=names,
             y=potential_scores,
             marker_color=COLORS["primary"],
@@ -157,7 +157,7 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
         ))
 
         fig.add_trace(go.Bar(
-            name="Urgence × 10",
+            name="Urgency × 10",
             x=names,
             y=urgency_scores,
             marker_color=COLORS["dark"],
@@ -170,7 +170,7 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
 
         fig.update_layout(
             title=dict(
-                text="Comparatif Prospects : Potentiel vs Urgence",
+                text="Prospect Comparison: Potential vs Urgency",
                 font=dict(size=13, color=COLORS["text"], family="Arial, sans-serif"),
                 x=0.5,
             ),
@@ -294,7 +294,7 @@ def generate_newsletter_html(
                                         font-weight:700;letter-spacing:1px;
                                         text-transform:uppercase;
                                         color:{COLORS['primary']};">
-                                Insight commercial
+                                Sales Insight
                               </p>
                               <p style="margin:0;font-size:13px;
                                         color:{COLORS['dark']};
@@ -316,7 +316,7 @@ def generate_newsletter_html(
                               <div style="font-size:10px;color:{COLORS['muted']};
                                           margin-bottom:5px;text-transform:uppercase;
                                           letter-spacing:0.8px;">
-                                Urgence
+                                Urgency
                               </div>
                               {urgency_dots}
                             </td>
@@ -329,7 +329,7 @@ def generate_newsletter_html(
                           <a href="{prospect.source_url}"
                              style="color:{COLORS['primary']};text-decoration:none;
                                     font-weight:700;letter-spacing:0.3px;">
-                            Consulter la source
+                            View source
                           </a>
                           &nbsp;&nbsp;
                           <span style="color:{COLORS['muted']};">
@@ -360,10 +360,10 @@ def generate_newsletter_html(
                   <p style="margin:0 0 16px;font-size:11px;font-weight:700;
                               letter-spacing:1.5px;text-transform:uppercase;
                               color:{COLORS['muted']};">
-                    Analyse comparative &mdash; Top 5 Prospects
+                    Comparative Analysis &mdash; Top 5 Prospects
                   </p>
                   <img src="data:image/png;base64,{chart_b64}"
-                       alt="Comparatif Prospects"
+                       alt="Prospect Comparison"
                        style="max-width:100%;border-radius:3px;" />
                 </td>
               </tr>
@@ -375,7 +375,7 @@ def generate_newsletter_html(
 
     # ── Template HTML complet ─────────────────────────────────────────────────
     html = f"""<!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -412,6 +412,7 @@ def generate_newsletter_html(
                                color:rgba(255,255,255,0.9);font-weight:600;">
                       {date_str}
                     </p>
+
                   </td>
                 </tr>
               </table>
@@ -426,12 +427,12 @@ def generate_newsletter_html(
                   <td style="vertical-align:middle;">
                     <h1 style="margin:0;font-size:20px;color:white;
                                font-weight:800;letter-spacing:0.5px;">
-                      Top 5 Prospects - Sales Management
+                      Top 5 Daily Prospects
                     </h1>
                   </td>
                   <td align="right" style="vertical-align:middle;">
                     <span style="font-size:12px;color:rgba(255,255,255,0.55);">
-                      IPO &middot; M&amp;A &middot; Levées de fonds
+                      IPO &middot; M&amp;A &middot; Fundraising
                     </span>
                   </td>
                 </tr>
@@ -443,8 +444,8 @@ def generate_newsletter_html(
           <tr>
             <td style="background:{COLORS['accent']};padding:10px 36px;">
               <p style="margin:0;font-size:13px;color:white;font-weight:600;">
-                {len(prospects)} prospect{'s' if len(prospects) > 1 else ''} qualifi{'és' if len(prospects) > 1 else 'é'} détect{'és' if len(prospects) > 1 else 'é'} aujourd'hui &mdash;
-                tous présentent des signaux de liquidité récents.
+                {len(prospects)} qualified prospect{'s' if len(prospects) > 1 else ''} identified today &mdash;
+                all showing recent liquidity signals.
               </p>
             </td>
           </tr>
@@ -459,7 +460,7 @@ def generate_newsletter_html(
             </td>
           </tr>
 
-          <!-- ── PIED DE PAGE : fond noir SG + SGBP Luxembourg ── -->
+          <!-- ── FOOTER ── -->
           <tr>
             <td style="background:{COLORS['dark']};
                        border-radius:0 0 4px 4px;
@@ -467,20 +468,15 @@ def generate_newsletter_html(
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="vertical-align:top;">
-                    <!-- Identité SGBP -->
                     <p style="margin:0 0 4px;font-size:13px;color:white;
                                font-weight:800;letter-spacing:0.5px;">
-                      SGBP Luxembourg
-                    </p>
-                    <p style="margin:0 0 12px;font-size:11px;
-                               color:rgba(255,255,255,0.55);">
-                      Soci&eacute;t&eacute; G&eacute;n&eacute;rale Private Banking
+                      Prospect Intelligence
                     </p>
                     <p style="margin:0 0 14px;font-size:11px;
                                color:rgba(255,255,255,0.4);line-height:1.7;">
-                      Cette newsletter est g&eacute;n&eacute;r&eacute;e automatiquement &agrave; partir
-                      de sources publiques. Les informations sont fournies &agrave; titre indicatif.
-                      Veuillez v&eacute;rifier les donn&eacute;es avant tout contact commercial.
+                      This newsletter is automatically generated from public sources.
+                      Information is provided for indicative purposes only.
+                      Please verify all data before any commercial contact.
                     </p>
                     <p style="margin:0;font-size:10px;
                                color:rgba(255,255,255,0.25);
@@ -495,7 +491,7 @@ def generate_newsletter_html(
                     <a href="{{{{ unsubscribe_url }}}}"
                        style="font-size:11px;color:rgba(255,255,255,0.35);
                               text-decoration:underline;white-space:nowrap;">
-                      Se d&eacute;sabonner
+                      Unsubscribe
                     </a>
                   </td>
                 </tr>

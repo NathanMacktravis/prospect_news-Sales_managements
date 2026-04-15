@@ -1,6 +1,6 @@
-# SGPB Prospect Intelligence
+# Prospect Intelligence
 
-Application Streamlit de détection automatique de prospects HNWI/UHNWI pour la Société Générale Private Banking.  
+Application Streamlit de détection automatique de prospects HNWI/UHNWI.  
 Elle collecte chaque jour des signaux financiers publics (IPO, M&A, levées de fonds, nominations), les analyse via Claude AI, et envoie une newsletter HTML aux commerciaux inscrits.
 
 ---
@@ -109,7 +109,7 @@ TAVILY_API_KEY=                      # Laisser vide pour n'utiliser que DuckDuck
 # ── Email Resend ─────────────────────────────────────────────────────────────
 RESEND_API_KEY=re_...                # resend.com → API Keys
 FROM_EMAIL=newsletter@votre-domaine.com   # Domaine vérifié sur resend.com
-FROM_NAME=SGPB Prospect Intelligence
+FROM_NAME=Prospect Intelligence
 
 # ── Base de données ──────────────────────────────────────────────────────────
 DB_PATH=data/db.json
@@ -173,7 +173,7 @@ Streamlit Community Cloud est la méthode la plus simple : **gratuit, URL publiq
 
 ```bash
 # S'assurer que le logo est bien versionné
-git add data/sg-logo.png .gitignore .streamlit/config.toml
+git add data/logo.png .gitignore .streamlit/config.toml
 git add backend/ frontend/ requirements.txt .env.example
 git commit -m "Prêt pour déploiement Streamlit Cloud"
 git push origin main
@@ -197,7 +197,7 @@ Dans le formulaire de création :
 | Repository | `<votre-compte>/prospect_news-Sales_managements` |
 | Branch | `main` |
 | Main file path | `frontend/app.py` |
-| App URL | `sgpb-prospects` (ou ce que vous souhaitez) |
+| App URL | `prospect-intelligence` (ou ce que vous souhaitez) |
 
 ### Étape 4 — Renseigner les secrets
 
@@ -207,7 +207,7 @@ Dans **Advanced settings → Secrets**, collez vos variables d'environnement au 
 ANTHROPIC_API_KEY = "sk-ant-api03-..."
 RESEND_API_KEY    = "re_..."
 FROM_EMAIL        = "newsletter@votre-domaine.com"
-FROM_NAME         = "SGPB Prospect Intelligence"
+FROM_NAME         = "Prospect Intelligence"
 DB_PATH           = "data/db.json"
 NEWSLETTER_HOUR   = "7"
 MAX_PROSPECTS     = "5"
@@ -220,7 +220,7 @@ MAX_TAVILY_PER_QUERY = "3"
 
 Cliquez sur **Deploy**. L'URL publique sera du type :
 ```
-https://sgpb-prospects.streamlit.app
+https://prospect-intelligence.streamlit.app
 ```
 
 ### Limitations de Streamlit Community Cloud
@@ -236,7 +236,7 @@ https://sgpb-prospects.streamlit.app
 Créez le fichier `.github/workflows/daily_pipeline.yml` dans votre dépôt :
 
 ```yaml
-name: Pipeline quotidien HNWI
+name: Daily HNWI Pipeline
 
 on:
   schedule:
@@ -298,7 +298,7 @@ Dans Railway → votre projet → **Variables**, ajoutez les mêmes clés que da
 ### 4. Déployer
 
 Railway détectera le `Procfile` et lancera les deux processus automatiquement.
-L'URL publique est générée automatiquement (ex. `sgpb.up.railway.app`).
+L'URL publique est générée automatiquement (ex. `prospect-intelligence.up.railway.app`).
 
 ---
 
@@ -314,7 +314,7 @@ L'URL publique est générée automatiquement (ex. `sgpb.up.railway.app`).
 Exemple de cron Linux (`crontab -e`) :
 
 ```cron
-0 7 * * * /chemin/vers/venv/bin/python -m backend.pipeline --run >> /var/log/sgpb_pipeline.log 2>&1
+0 7 * * * /chemin/vers/venv/bin/python -m backend.pipeline --run >> /var/log/prospect_pipeline.log 2>&1
 ```
 
 ---
@@ -336,17 +336,17 @@ prospect_news-Sales_managements/
 │   │   ├── extractor.py          Extraction de prospects via Claude AI
 │   │   └── scorer.py             Scoring et classement
 │   ├── newsletter/
-│   │   ├── generator.py          Génération HTML (thème SGPB)
+│   │   ├── generator.py          Génération HTML newsletter
 │   │   └── sender.py             Envoi via Resend
 │   └── db/
 │       └── database.py           Couche TinyDB (abonnés, prospects, logs)
 │
 ├── data/
-│   ├── sg-logo.png               Logo Société Générale (versionné)
+│   ├── logo.png                  Logo (versionné)
 │   └── db.json                   Base TinyDB (non versionnée, générée à l'exécution)
 │
 ├── .streamlit/
-│   └── config.toml               Thème visuel SGPB
+│   └── config.toml               Thème visuel
 │
 ├── .env.example                  Modèle de configuration (copier vers .env)
 ├── requirements.txt              Dépendances Python
@@ -363,7 +363,7 @@ prospect_news-Sales_managements/
 3. Extraction      ProspectExtractor → Claude AI → ProspectData (nom, montant, pitch…)
 4. Scoring         rank_prospects() → score potentiel (0-100) + urgence (0-10)
 5. Persistance     ProspectDB.save_run() → data/db.json
-6. Newsletter      generate_newsletter_html() → HTML SGPB avec logo SG embarqué
+6. Newsletter      generate_newsletter_html() → HTML avec logo embarqué
 7. Envoi           NewsletterSender → Resend API → abonnés actifs
 ```
 

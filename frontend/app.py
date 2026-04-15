@@ -1,5 +1,5 @@
 """
-Streamlit Frontend — SGPB Prospect Intelligence
+Streamlit Frontend — Prospect Intelligence
   - Email subscription form with daily newsletter option
   - Newsletter preview (latest run)
   - Dashboard: prospect table + Plotly chart
@@ -27,7 +27,7 @@ _LOGO_PATH = ROOT / "data" / "sg-logo.png"
 
 # ── Page config (doit être le premier appel Streamlit) ────────────────────────
 st.set_page_config(
-    page_title="SGPB Prospect Intelligence",
+    page_title="Prospect Intelligence",
     page_icon=str(_LOGO_PATH) if _LOGO_PATH.exists() else None,
     layout="wide",
     initial_sidebar_state="expanded",
@@ -39,7 +39,7 @@ if _LOGO_PATH.exists():
     with open(_LOGO_PATH, "rb") as _f:
         _LOGO_B64 = base64.b64encode(_f.read()).decode()
 
-# ── CSS — Société Générale Private Banking ────────────────────────────────────
+# ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
   /* Sidebar */
@@ -178,9 +178,9 @@ with st.sidebar:
     st.markdown(
         '<p style="margin:0 0 2px;font-size:10px;font-weight:700;'
         'letter-spacing:1.5px;text-transform:uppercase;color:#E30613 !important;">'
-        'Private Banking</p>'
+        'Prospect Intelligence</p>'
         '<p style="margin:0 0 14px;font-size:13px;color:rgba(255,255,255,0.55) !important;">'
-        'Prospect Intelligence</p>',
+        'HNWI &middot; UHNWI</p>',
         unsafe_allow_html=True,
     )
     st.markdown("---")
@@ -223,7 +223,7 @@ if "Accueil" in page:
                 border-radius:4px;padding:36px 40px;margin-bottom:28px;">
       <p style="margin:0 0 6px;font-size:10px;font-weight:700;
                 color:rgba(255,255,255,0.55);letter-spacing:2px;text-transform:uppercase;">
-        Société Générale Private Banking
+        Prospect Intelligence
       </p>
       <h1 style="margin:0 0 10px;font-size:26px;font-weight:800;
                  color:white;letter-spacing:0.3px;">
