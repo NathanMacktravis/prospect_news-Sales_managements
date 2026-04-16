@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -39,6 +40,10 @@ COLORS = {
     "danger":   "#C62828",
     "accent":   "#B20010",   # Rouge SG foncé
 }
+
+# ─── App URL (unsubscribe link) ───────────────────────────────────────────────
+
+APP_URL = os.getenv("APP_URL", "https://sg-prospect-intelligence.streamlit.app")
 
 EVENT_BADGE_COLORS = {
     "IPO":          ("#FFFFFF", "#E30613"),
@@ -482,13 +487,13 @@ def generate_newsletter_html(
                                color:rgba(255,255,255,0.25);
                                border-top:1px solid rgba(255,255,255,0.1);
                                padding-top:12px;letter-spacing:0.5px;">
-                      HNWI Prospect Intelligence &middot; Powered by AI
+                      Prospect Intelligence &middot; powered by AI
                     </p>
                   </td>
                   <td align="right" style="vertical-align:top;padding-left:24px;width:160px;">
                     {_SG_LOGO_FOOTER}
                     <br/>
-                    <a href="{{{{ unsubscribe_url }}}}"
+                    <a href="{APP_URL}"
                        style="font-size:11px;color:rgba(255,255,255,0.35);
                               text-decoration:underline;white-space:nowrap;">
                       Unsubscribe
