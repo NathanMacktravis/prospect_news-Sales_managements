@@ -1,0 +1,32 @@
+name: Daily HNWI Pipeline
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # 07:00 UTC chaque jour
+  workflow_dispatch:        # Déclenchement manuel possible
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip' 
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
+          FROM_EMAIL:        ${{ secrets.FROM_EMAIL }}
+          FROM_NAME:         ${{ secrets.FROM_NAME }}
+          DB_PATH:           data/db.json
+          MAX_PROSPECTS:     "5"
+          MAX_DDG_PER_QUERY: "5"
+        run: python -m backend.pipeline --run
