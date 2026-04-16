@@ -26,6 +26,8 @@ jobs:
           RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
           FROM_EMAIL:        ${{ secrets.FROM_EMAIL }}
           FROM_NAME:         ${{ secrets.FROM_NAME }}
+          SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:      ${{ secrets.SUPABASE_KEY }}
           DB_PATH:           data/db.json
           SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY:      ${{ secrets.SUPABASE_KEY }}

@@ -11,11 +11,12 @@ Elle collecte chaque jour des signaux financiers publics (IPO, M&A, levées de f
 2. [Prérequis](#prérequis)
 3. [Installation locale](#installation-locale)
 4. [Configuration des variables d'environnement](#configuration-des-variables-denvironnement)
-5. [Exécution en local](#exécution-en-local)
-6. [Déploiement sur Streamlit Community Cloud](#déploiement-sur-streamlit-community-cloud)
-7. [Déploiement alternatif sur Railway](#déploiement-alternatif-sur-railway)
-8. [Planification quotidienne du pipeline](#planification-quotidienne-du-pipeline)
-9. [Structure du projet](#structure-du-projet)
+5. [Configuration Supabase](#configuration-supabase)
+6. [Exécution en local](#exécution-en-local)
+7. [Déploiement sur Streamlit Community Cloud](#déploiement-sur-streamlit-community-cloud)
+8. [Déploiement alternatif sur Railway](#déploiement-alternatif-sur-railway)
+9. [Planification quotidienne du pipeline](#planification-quotidienne-du-pipeline)
+10. [Structure du projet](#structure-du-projet)
 
 ---
 
@@ -26,8 +27,23 @@ Sources publiques          Pipeline Python              Destinataires
 (RSS, DuckDuckGo,   ──►   Collecte → Signal     ──►   Newsletter HTML
  Tavily optionnel)         → Extraction Claude         (Resend)
                            → Score & Rank
-                           → TinyDB (JSON)
+                           → Supabase (abonnés)  ◄──  Inscription (Streamlit)
+                           → TinyDB (prospects)
                            → Interface Streamlit
+```
+
+### Interaction entre les machines
+
+```
+Streamlit Cloud (app)       GitHub Actions (cron 07:00 UTC)    Supabase (DB)
+─────────────────────       ───────────────────────────────    ─────────────
+Utilisateur s'inscrit
+→ SubscriberDB.add()  ─────────────────────────────────────►  INSERT subscribers
+
+                            SubscriberDB.get_active() ────────► SELECT subscribers
+                            Pipeline (DDG + RSS + Claude)
+                            generate_newsletter_html()
+                            → email envoyé à chaque abonné ✓
 ```
 
 | Composant | Technologie | Coût |
@@ -35,7 +51,8 @@ Sources publiques          Pipeline Python              Destinataires
 | LLM extraction | Claude Haiku 4.5 (Anthropic) | ~$1/M tokens |
 | Collecte news | DuckDuckGo + RSS | Gratuit |
 | Collecte news (optionnel) | Tavily | 1 000 req/mois gratuits |
-| Base de données | TinyDB (fichier JSON local) | Gratuit |
+| Abonnés (DB cloud) | Supabase (PostgreSQL) | Gratuit jusqu'à 500 MB |
+| Prospects + logs (DB locale) | TinyDB (fichier JSON) | Gratuit |
 | Envoi email | Resend | 3 000 emails/mois gratuits |
 | Interface | Streamlit | Gratuit |
 
@@ -47,6 +64,7 @@ Sources publiques          Pipeline Python              Destinataires
 - **Git**
 - Un compte [Anthropic](https://console.anthropic.com) — clé API Claude
 - Un compte [Resend](https://resend.com) — clé API email + domaine vérifié
+- Un compte [Supabase](https://supabase.com) — base de données abonnés cloud (gratuit)
 - *(Optionnel)* Un compte [Tavily](https://tavily.com) pour la collecte d'actualités enrichie
 
 ---
@@ -111,7 +129,11 @@ RESEND_API_KEY=re_...                # resend.com → API Keys
 FROM_EMAIL=newsletter@votre-domaine.com   # Domaine vérifié sur resend.com
 FROM_NAME=Prospect Intelligence
 
-# ── Base de données ──────────────────────────────────────────────────────────
+# ── Supabase (abonnés) ───────────────────────────────────────────────────────
+SUPABASE_URL=https://xxxxxxxxxxxxxxxxxxxx.supabase.co
+SUPABASE_KEY=sb_publishable_...      # Clé anon/publique — Settings → API
+
+# ── Base de données locale (prospects + logs) ─────────────────────────────────
 DB_PATH=data/db.json
 
 # ── App ──────────────────────────────────────────────────────────────────────
@@ -130,6 +152,49 @@ MAX_TAVILY_PER_QUERY=3
 
 > **Test rapide sans domaine propre :** utilisez `FROM_EMAIL=onboarding@resend.dev`
 > (limité aux emails de test, non recommandé en production)
+
+---
+
+## Configuration Supabase
+
+Supabase héberge la liste des abonnés dans le cloud, ce qui permet à Streamlit Cloud et à GitHub Actions (deux machines distinctes) d'accéder aux mêmes données.
+
+### 1. Créer un projet
+
+1. Allez sur [supabase.com](https://supabase.com) → **New project**
+2. Choisissez un nom, une région proche de vos utilisateurs, et un mot de passe fort
+
+### 2. Créer la table `subscribers`
+
+Dans votre projet → **SQL Editor**, exécutez :
+
+```sql
+CREATE TABLE subscribers (
+    id         BIGSERIAL PRIMARY KEY,
+    email      TEXT        UNIQUE NOT NULL,
+    active     BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 3. Récupérer les clés API
+
+Dans **Settings → API** :
+
+| Variable | Valeur à copier |
+|---|---|
+| `SUPABASE_URL` | **Project URL** (ex. `https://xxxx.supabase.co`) |
+| `SUPABASE_KEY` | **anon / public** key (commence par `sb_publishable_...` ou `eyJ...`) |
+
+> La clé `anon` est publique par conception — elle ne donne accès qu'aux opérations autorisées par vos **Row Level Security (RLS)** policies. Pour une sécurité maximale en production, activez RLS sur la table `subscribers`.
+
+### 4. Ajouter les variables dans chaque environnement
+
+| Environnement | Où renseigner |
+|---|---|
+| Local | Fichier `.env` |
+| Streamlit Cloud | **Advanced settings → Secrets** (format TOML) |
+| GitHub Actions | **Settings → Secrets and variables → Actions** |
 
 ---
 
@@ -173,7 +238,7 @@ Streamlit Community Cloud est la méthode la plus simple : **gratuit, URL publiq
 
 ```bash
 # S'assurer que le logo est bien versionné
-git add data/logo.png .gitignore .streamlit/config.toml
+git add data/sg-logo.png .gitignore .streamlit/config.toml
 git add backend/ frontend/ requirements.txt .env.example
 git commit -m "Prêt pour déploiement Streamlit Cloud"
 git push origin main
@@ -208,12 +273,16 @@ ANTHROPIC_API_KEY = "sk-ant-api03-..."
 RESEND_API_KEY    = "re_..."
 FROM_EMAIL        = "newsletter@votre-domaine.com"
 FROM_NAME         = "Prospect Intelligence"
-DB_PATH           = "data/db.json"
-NEWSLETTER_HOUR   = "7"
-MAX_PROSPECTS     = "5"
-MAX_DDG_PER_QUERY = "5"
+
+SUPABASE_URL      = "https://xxxxxxxxxxxxxxxxxxxx.supabase.co"
+SUPABASE_KEY      = "sb_publishable_..."
+
+DB_PATH              = "data/db.json"
+NEWSLETTER_HOUR      = "7"
+MAX_PROSPECTS        = "5"
+MAX_DDG_PER_QUERY    = "5"
 MAX_TAVILY_PER_QUERY = "3"
-# TAVILY_API_KEY  = ""   # Optionnel
+# TAVILY_API_KEY     = ""   # Optionnel
 ```
 
 ### Étape 5 — Déployer
@@ -227,16 +296,17 @@ https://prospect-intelligence.streamlit.app
 
 | Limitation | Impact | Solution |
 |---|---|---|
-| Filesystem éphémère | La base TinyDB est réinitialisée à chaque redémarrage | Utiliser le pipeline via l'onglet Admin pour régénérer les données |
-| Pas de processus background | Le planificateur automatique (`--schedule`) ne fonctionne pas | Déclencher le pipeline manuellement depuis l'Admin, ou via GitHub Actions (voir ci-dessous) |
+| Filesystem éphémère | La base TinyDB (prospects) est réinitialisée à chaque redémarrage | Relancer le pipeline depuis l'onglet Admin |
+| Pas de processus background | Le planificateur automatique (`--schedule`) ne fonctionne pas | GitHub Actions (voir ci-dessous) |
 | RAM limitée à 1 Go | Kaleido (rendu graphique) peut être lent | Acceptable pour 5 prospects/jour |
+| Abonnés persistants | Les abonnés sont en Supabase → non affectés par le redémarrage | Rien à faire |
 
 ### Planification via GitHub Actions (recommandé pour Streamlit Cloud)
 
 Créez le fichier `.github/workflows/daily_pipeline.yml` dans votre dépôt :
 
 ```yaml
-name: Daily HNWI Pipeline
+name: Daily Prospect Pipeline
 
 on:
   schedule:
@@ -263,13 +333,15 @@ jobs:
           RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
           FROM_EMAIL:        ${{ secrets.FROM_EMAIL }}
           FROM_NAME:         ${{ secrets.FROM_NAME }}
+          SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:      ${{ secrets.SUPABASE_KEY }}
           DB_PATH:           data/db.json
           MAX_PROSPECTS:     "5"
           MAX_DDG_PER_QUERY: "5"
         run: python -m backend.pipeline --run
 ```
 
-Ajoutez ensuite vos secrets dans **GitHub → Settings → Secrets and variables → Actions**.
+Ajoutez ensuite vos secrets dans **GitHub → Settings → Secrets and variables → Actions** (mêmes valeurs que dans `.env`).
 
 ---
 
@@ -284,16 +356,14 @@ Ajoutez ensuite vos secrets dans **GitHub → Settings → Secrets and variables
 
 ### 2. Créer un fichier `Procfile` à la racine
 
-```bash
-cat > Procfile << 'EOF'
+```
 web: streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0
 scheduler: python -m backend.pipeline --schedule
-EOF
 ```
 
 ### 3. Configurer les variables d'environnement
 
-Dans Railway → votre projet → **Variables**, ajoutez les mêmes clés que dans `.env`.
+Dans Railway → votre projet → **Variables**, ajoutez les mêmes clés que dans `.env`, y compris `SUPABASE_URL` et `SUPABASE_KEY`.
 
 ### 4. Déployer
 
@@ -306,8 +376,8 @@ L'URL publique est générée automatiquement (ex. `prospect-intelligence.up.rai
 
 | Méthode | Coût | Complexité | Recommandé si |
 |---|---|---|---|
-| GitHub Actions (cron) | Gratuit | Facile | Streamlit Cloud |
-| Railway scheduler | ~$5/mois | Facile | Besoin de persistance DB |
+| GitHub Actions (cron) | Gratuit | Facile | Streamlit Cloud + Supabase |
+| Railway scheduler | ~$5/mois | Facile | Tout-en-un sans GitHub Actions |
 | `--schedule` en local | Gratuit | Facile | Développement / test |
 | Cron système (Linux) | Gratuit | Moyen | VPS personnel |
 
@@ -339,11 +409,11 @@ prospect_news-Sales_managements/
 │   │   ├── generator.py          Génération HTML newsletter
 │   │   └── sender.py             Envoi via Resend
 │   └── db/
-│       └── database.py           Couche TinyDB (abonnés, prospects, logs)
+│       └── database.py           SubscriberDB → Supabase | ProspectDB + RunLogDB → TinyDB
 │
 ├── data/
-│   ├── logo.png                  Logo (versionné)
-│   └── db.json                   Base TinyDB (non versionnée, générée à l'exécution)
+│   ├── sg-logo.png               Logo (versionné)
+│   └── db.json                   Base TinyDB prospects/logs (non versionnée)
 │
 ├── .streamlit/
 │   └── config.toml               Thème visuel
@@ -358,13 +428,15 @@ prospect_news-Sales_managements/
 ## Flux de données complet
 
 ```
-1. Collecte        NewsCollector → DuckDuckGo, RSS financiers, (Tavily)
-2. Filtrage        SignalDetector → garde les articles avec signaux de liquidité
-3. Extraction      ProspectExtractor → Claude AI → ProspectData (nom, montant, pitch…)
-4. Scoring         rank_prospects() → score potentiel (0-100) + urgence (0-10)
-5. Persistance     ProspectDB.save_run() → data/db.json
-6. Newsletter      generate_newsletter_html() → HTML avec logo embarqué
-7. Envoi           NewsletterSender → Resend API → abonnés actifs
+1. Inscription     Streamlit app → SubscriberDB.add() → Supabase (persistant, cloud)
+2. Collecte        NewsCollector → DuckDuckGo, RSS financiers, (Tavily)
+3. Filtrage        SignalDetector → garde les articles avec signaux de liquidité
+4. Extraction      ProspectExtractor → Claude AI → ProspectData (nom, montant, pitch…)
+5. Scoring         rank_prospects() → score potentiel (0-100) + urgence (0-10)
+6. Persistance     ProspectDB.save_run() → data/db.json (local)
+7. Newsletter      generate_newsletter_html() → HTML avec logo embarqué
+8. Destinataires   SubscriberDB.get_active() → Supabase → liste emails actifs
+9. Envoi           NewsletterSender → Resend API → abonnés actifs
 ```
 
 ---
@@ -376,6 +448,14 @@ prospect_news-Sales_managements/
 - Vérifiez que `FROM_EMAIL` correspond à un domaine vérifié sur resend.com
 - Test rapide : utilisez `FROM_EMAIL=onboarding@resend.dev`
 
+**`RuntimeError: SUPABASE_URL and SUPABASE_KEY must be set`**
+- Vérifiez que les deux variables sont bien présentes dans votre `.env` (local), les secrets Streamlit Cloud, et les secrets GitHub Actions
+- La clé à utiliser est la clé **anon / public** (pas la `service_role`)
+
+**Aucun abonné reçoit la newsletter (GitHub Actions)**
+- Vérifiez que la table `subscribers` existe bien dans Supabase (SQL Editor)
+- Vérifiez que `SUPABASE_URL` et `SUPABASE_KEY` sont configurés dans les secrets GitHub Actions
+
 **`No articles collected` dans les logs**
 - DuckDuckGo peut être temporairement indisponible — réessayez dans quelques minutes
 - Activez Tavily (`TAVILY_API_KEY`) pour plus de robustesse
@@ -384,6 +464,7 @@ prospect_news-Sales_managements/
 - Sur certains environnements, `kaleido` nécessite des dépendances système
 - Sur Streamlit Cloud, le graphique s'affiche normalement (chromium inclus)
 
-**La base de données est vide après redémarrage (Streamlit Cloud)**
-- Normal : le filesystem est éphémère
+**La base de données prospects est vide après redémarrage (Streamlit Cloud)**
+- Normal : le filesystem est éphémère (TinyDB)
 - Relancez le pipeline depuis l'onglet **Admin** pour régénérer les données
+- Les abonnés ne sont pas affectés (ils sont dans Supabase)

@@ -1,8 +1,17 @@
 """
-Database layer — TinyDB-backed storage for:
-  - Subscribers (email, created_at, active)
-  - Prospects (extracted data, scores, date)
-  - Newsletter runs (date, status, recipient count)
+Database layer:
+  - SubscriberDB  → Supabase  (cloud PostgreSQL — accessible from any machine)
+  - ProspectDB    → TinyDB    (local JSON — ephemeral, machine-local)
+  - RunLogDB      → TinyDB    (local JSON — ephemeral, machine-local)
+
+Supabase table required (run once in the Supabase SQL editor):
+
+    CREATE TABLE subscribers (
+        id         BIGSERIAL PRIMARY KEY,
+        email      TEXT        UNIQUE NOT NULL,
+        active     BOOLEAN     NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 """
 
 from __future__ import annotations
@@ -15,6 +24,7 @@ from typing import Optional
 from tinydb import TinyDB, Query
 from tinydb.middlewares import CachingMiddleware
 from tinydb.storages import JSONStorage
+from supabase import create_client, Client
 
 from backend.processors.extractor import ProspectData
 from backend.processors.scorer import ScoredProspect
@@ -24,13 +34,37 @@ logger = logging.getLogger(__name__)
 DB_PATH = os.getenv("DB_PATH", "data/db.json")
 
 
+# ─── Supabase client (lazy singleton) ────────────────────────────────────────
+
+_supabase_client: Client | None = None
+
+
+def _get_supabase() -> Client:
+    global _supabase_client
+    if _supabase_client is None:
+        url = os.getenv("SUPABASE_URL", "").strip()
+        key = os.getenv("SUPABASE_KEY", "").strip()
+        if not url or not key:
+            raise RuntimeError(
+                "SUPABASE_URL and SUPABASE_KEY must be set. "
+                "Create a free project at https://supabase.com and copy the "
+                "Project URL + anon/public key."
+            )
+        _supabase_client = create_client(url, key)
+    return _supabase_client
+
+
+# ─── TinyDB helper (prospects + run logs only) ───────────────────────────────
+
 def _get_db() -> TinyDB:
     """Return a TinyDB instance with caching middleware."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     return TinyDB(DB_PATH, storage=CachingMiddleware(JSONStorage))
 
 
-# ─── Subscriber operations ───────────────────────────────────────────────────
+# ─── Subscriber operations (Supabase) ────────────────────────────────────────
 
 class SubscriberDB:
     TABLE = "subscribers"
@@ -39,61 +73,56 @@ class SubscriberDB:
     def add(email: str) -> bool:
         """Add a subscriber. Returns False if already exists."""
         email = email.strip().lower()
-        with _get_db() as db:
-            table = db.table(SubscriberDB.TABLE)
-            Q = Query()
-            if table.search(Q.email == email):
-                logger.info(f"Subscriber already exists: {email}")
-                return False
-            table.insert({
-                "email": email,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "active": True,
-            })
-            logger.info(f"New subscriber: {email}")
-            return True
+        sb = _get_supabase()
+        existing = sb.table(SubscriberDB.TABLE).select("email").eq("email", email).execute()
+        if existing.data:
+            logger.info(f"Subscriber already exists: {email}")
+            return False
+        sb.table(SubscriberDB.TABLE).insert({
+            "email": email,
+            "active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+        logger.info(f"New subscriber: {email}")
+        return True
 
     @staticmethod
     def remove(email: str) -> bool:
         """Deactivate a subscriber (soft delete). Returns True if found."""
         email = email.strip().lower()
-        with _get_db() as db:
-            table = db.table(SubscriberDB.TABLE)
-            Q = Query()
-            results = table.search(Q.email == email)
-            if not results:
-                return False
-            table.update({"active": False}, Q.email == email)
-            logger.info(f"Unsubscribed: {email}")
-            return True
+        sb = _get_supabase()
+        existing = sb.table(SubscriberDB.TABLE).select("email").eq("email", email).execute()
+        if not existing.data:
+            return False
+        sb.table(SubscriberDB.TABLE).update({"active": False}).eq("email", email).execute()
+        logger.info(f"Unsubscribed: {email}")
+        return True
 
     @staticmethod
     def get_active() -> list[str]:
         """Return list of active subscriber emails."""
-        with _get_db() as db:
-            table = db.table(SubscriberDB.TABLE)
-            Q = Query()
-            rows = table.search(Q.active == True)
-            return [r["email"] for r in rows]
+        sb = _get_supabase()
+        res = sb.table(SubscriberDB.TABLE).select("email").eq("active", True).execute()
+        return [r["email"] for r in res.data]
 
     @staticmethod
     def get_all() -> list[dict]:
         """Return all subscriber records."""
-        with _get_db() as db:
-            return db.table(SubscriberDB.TABLE).all()
+        sb = _get_supabase()
+        res = sb.table(SubscriberDB.TABLE).select("*").order("created_at", desc=True).execute()
+        return res.data
 
     @staticmethod
     def set_active(email: str, active: bool = True) -> bool:
         """Update the active status of an existing subscriber. Returns True if found."""
         email = email.strip().lower()
-        with _get_db() as db:
-            table = db.table(SubscriberDB.TABLE)
-            Q = Query()
-            if not table.search(Q.email == email):
-                return False
-            table.update({"active": active}, Q.email == email)
-            logger.info(f"Subscriber {email} active={active}")
-            return True
+        sb = _get_supabase()
+        existing = sb.table(SubscriberDB.TABLE).select("email").eq("email", email).execute()
+        if not existing.data:
+            return False
+        sb.table(SubscriberDB.TABLE).update({"active": active}).eq("email", email).execute()
+        logger.info(f"Subscriber {email} active={active}")
+        return True
 
     @staticmethod
     def count_active() -> int:
