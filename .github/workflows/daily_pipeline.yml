@@ -22,13 +22,13 @@ jobs:
 
       - name: Run pipeline
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
-          FROM_EMAIL:        ${{ secrets.FROM_EMAIL }}
-          FROM_NAME:         ${{ secrets.FROM_NAME }}
-          SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY:      ${{ secrets.SUPABASE_KEY }}
-          DB_PATH:           data/db.json
-          MAX_PROSPECTS:     "5"
-          MAX_DDG_PER_QUERY: "5"
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+          FROM_EMAIL:           ${{ secrets.FROM_EMAIL }}
+          FROM_NAME:            ${{ secrets.FROM_NAME }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:         ${{ secrets.SUPABASE_KEY }}
+          MAX_PROSPECTS:        "5"
+          MAX_DDG_PER_QUERY:    "5"
+          MAX_TAVILY_PER_QUERY: "3"
         run: python -m backend.pipeline --run

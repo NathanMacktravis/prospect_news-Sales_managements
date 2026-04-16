@@ -7,7 +7,7 @@ Runs the full daily HNWI/UHNWI prospect detection pipeline:
   3. Extract prospects via Claude API
   4. Score & rank
   5. Generate HTML newsletter
-  6. Persist to TinyDB
+  6. Persist to Supabase
   7. Send to subscribers (Resend)
 """
 
@@ -157,7 +157,7 @@ def run_pipeline(
         result.newsletter_html = newsletter_html
 
         # Toujours sauvegarder le HTML sur disque (dry-run ou pas)
-        html_path = Path(os.getenv("DB_PATH", "data/db.json")).parent / f"newsletter_{result.run_id}.html"
+        html_path = Path("data") / f"newsletter_{result.run_id}.html"
         html_path.parent.mkdir(parents=True, exist_ok=True)
         html_path.write_text(newsletter_html, encoding="utf-8")
         logger.info(f"  → Newsletter HTML sauvegardée : {html_path}")
