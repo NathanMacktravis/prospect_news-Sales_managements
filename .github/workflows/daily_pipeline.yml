@@ -1,4 +1,4 @@
-name: Daily HNWI Pipeline
+name: Daily Intelligence Prospect Pipeline
 
 on:
   schedule:
