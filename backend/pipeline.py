@@ -21,7 +21,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env before any other local imports
+# Load .env before any other local imports  
 load_dotenv()
 
 from backend.collectors.news_collector import NewsCollector
