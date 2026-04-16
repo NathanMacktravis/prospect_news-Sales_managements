@@ -1,16 +1,52 @@
 """
-Database layer:
-  - SubscriberDB  → Supabase  (cloud PostgreSQL — accessible from any machine)
-  - ProspectDB    → TinyDB    (local JSON — ephemeral, machine-local)
-  - RunLogDB      → TinyDB    (local JSON — ephemeral, machine-local)
+Database layer — 100 % Supabase (cloud PostgreSQL):
+  - SubscriberDB  → table `subscribers`
+  - ProspectDB    → table `prospects`
+  - RunLogDB      → table `run_log`
 
-Supabase table required (run once in the Supabase SQL editor):
+SQL à exécuter une fois dans le SQL Editor de Supabase
+(Settings → SQL Editor) :
 
     CREATE TABLE subscribers (
         id         BIGSERIAL PRIMARY KEY,
         email      TEXT        UNIQUE NOT NULL,
         active     BOOLEAN     NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE prospects (
+        id                   BIGSERIAL PRIMARY KEY,
+        run_id               TEXT    NOT NULL,
+        rank                 INTEGER NOT NULL,
+        name                 TEXT,
+        title                TEXT,
+        company              TEXT,
+        sector               TEXT,
+        event_type           TEXT,
+        event_summary        TEXT,
+        estimated_amount_usd NUMERIC,
+        amount_label         TEXT,
+        location             TEXT,
+        source_url           TEXT,
+        published_at         TEXT,
+        sales_pitch          TEXT,
+        urgency_score        INTEGER,
+        confidence_score     INTEGER,
+        potential_score      NUMERIC,
+        extracted_at         TEXT,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE run_log (
+        id               BIGSERIAL PRIMARY KEY,
+        run_id           TEXT NOT NULL,
+        timestamp        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        prospect_count   INTEGER,
+        recipient_count  INTEGER,
+        sent_count       INTEGER,
+        failed_count     INTEGER,
+        status           TEXT,
+        error            TEXT
     );
 """
 
@@ -21,17 +57,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from tinydb import TinyDB, Query
-from tinydb.middlewares import CachingMiddleware
-from tinydb.storages import JSONStorage
 from supabase import create_client, Client
 
 from backend.processors.extractor import ProspectData
 from backend.processors.scorer import ScoredProspect
 
 logger = logging.getLogger(__name__)
-
-DB_PATH = os.getenv("DB_PATH", "data/db.json")
 
 
 # ─── Supabase client (lazy singleton) ────────────────────────────────────────
@@ -54,17 +85,7 @@ def _get_supabase() -> Client:
     return _supabase_client
 
 
-# ─── TinyDB helper (prospects + run logs only) ───────────────────────────────
-
-def _get_db() -> TinyDB:
-    """Return a TinyDB instance with caching middleware."""
-    db_dir = os.path.dirname(DB_PATH)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    return TinyDB(DB_PATH, storage=CachingMiddleware(JSONStorage))
-
-
-# ─── Subscriber operations (Supabase) ────────────────────────────────────────
+# ─── Subscriber operations ────────────────────────────────────────────────────
 
 class SubscriberDB:
     TABLE = "subscribers"
@@ -144,71 +165,84 @@ class ProspectDB:
             run_date = datetime.now(timezone.utc)
 
         run_id = run_date.strftime("%Y-%m-%d")
+        sb = _get_supabase()
 
-        with _get_db() as db:
-            table = db.table(ProspectDB.TABLE)
-            Q = Query()
-            # Remove any existing run for the same date
-            table.remove(Q.run_id == run_id)
+        # Remove any existing run for the same date
+        sb.table(ProspectDB.TABLE).delete().eq("run_id", run_id).execute()
 
-            records = []
-            for rank, sp in enumerate(prospects, start=1):
-                d = sp.data
-                records.append({
-                    "run_id": run_id,
-                    "rank": rank,
-                    "name": d.name,
-                    "title": d.title,
-                    "company": d.company,
-                    "sector": d.sector,
-                    "event_type": d.event_type,
-                    "event_summary": d.event_summary,
-                    "estimated_amount_usd": d.estimated_amount_usd,
-                    "amount_label": d.amount_label,
-                    "location": d.location,
-                    "source_url": d.source_url,
-                    "published_at": d.published_at,
-                    "sales_pitch": d.sales_pitch,
-                    "urgency_score": d.urgency_score,
-                    "confidence_score": d.confidence_score,
-                    "potential_score": sp.potential_score,
-                    "extracted_at": d.extracted_at,
-                })
+        records = []
+        for rank, sp in enumerate(prospects, start=1):
+            d = sp.data
+            records.append({
+                "run_id": run_id,
+                "rank": rank,
+                "name": d.name,
+                "title": d.title,
+                "company": d.company,
+                "sector": d.sector,
+                "event_type": d.event_type,
+                "event_summary": d.event_summary,
+                "estimated_amount_usd": d.estimated_amount_usd,
+                "amount_label": d.amount_label,
+                "location": d.location,
+                "source_url": d.source_url,
+                "published_at": d.published_at,
+                "sales_pitch": d.sales_pitch,
+                "urgency_score": d.urgency_score,
+                "confidence_score": d.confidence_score,
+                "potential_score": sp.potential_score,
+                "extracted_at": d.extracted_at,
+            })
 
-            table.insert_multiple(records)
-            logger.info(f"Saved {len(records)} prospects for run {run_id}")
-            return run_id
+        sb.table(ProspectDB.TABLE).insert(records).execute()
+        logger.info(f"Saved {len(records)} prospects for run {run_id}")
+        return run_id
 
     @staticmethod
     def get_latest_run() -> tuple[str | None, list[dict]]:
         """Return the most recent run_id and its prospect records."""
-        with _get_db() as db:
-            table = db.table(ProspectDB.TABLE)
-            all_records = table.all()
-            if not all_records:
-                return None, []
-
-            # Find most recent run_id (YYYY-MM-DD string sorts correctly)
-            latest_id = max(r["run_id"] for r in all_records)
-            run_records = [r for r in all_records if r["run_id"] == latest_id]
-            run_records.sort(key=lambda r: r["rank"])
-            return latest_id, run_records
+        sb = _get_supabase()
+        # Get the most recent run_id
+        id_res = (
+            sb.table(ProspectDB.TABLE)
+            .select("run_id")
+            .order("run_id", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not id_res.data:
+            return None, []
+        latest_id = id_res.data[0]["run_id"]
+        # Get all prospects for that run, ordered by rank
+        res = (
+            sb.table(ProspectDB.TABLE)
+            .select("*")
+            .eq("run_id", latest_id)
+            .order("rank")
+            .execute()
+        )
+        return latest_id, res.data
 
     @staticmethod
     def get_run(run_id: str) -> list[dict]:
         """Get prospects for a specific run date (YYYY-MM-DD)."""
-        with _get_db() as db:
-            Q = Query()
-            records = db.table(ProspectDB.TABLE).search(Q.run_id == run_id)
-            return sorted(records, key=lambda r: r["rank"])
+        sb = _get_supabase()
+        res = (
+            sb.table(ProspectDB.TABLE)
+            .select("*")
+            .eq("run_id", run_id)
+            .order("rank")
+            .execute()
+        )
+        return res.data
 
     @staticmethod
     def list_run_ids() -> list[str]:
         """Return all run IDs sorted descending (most recent first)."""
-        with _get_db() as db:
-            all_records = db.table(ProspectDB.TABLE).all()
-            ids = sorted({r["run_id"] for r in all_records}, reverse=True)
-            return ids
+        sb = _get_supabase()
+        res = sb.table(ProspectDB.TABLE).select("run_id").execute()
+        ids = sorted({r["run_id"] for r in res.data}, reverse=True)
+        return ids
 
 
 # ─── Newsletter run log ───────────────────────────────────────────────────────
@@ -226,21 +260,26 @@ class RunLogDB:
         status: str = "success",
         error: str | None = None,
     ) -> None:
-        with _get_db() as db:
-            db.table(RunLogDB.TABLE).insert({
-                "run_id": run_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "prospect_count": prospect_count,
-                "recipient_count": recipient_count,
-                "sent_count": sent_count,
-                "failed_count": failed_count,
-                "status": status,
-                "error": error,
-            })
+        sb = _get_supabase()
+        sb.table(RunLogDB.TABLE).insert({
+            "run_id": run_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "prospect_count": prospect_count,
+            "recipient_count": recipient_count,
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "status": status,
+            "error": error,
+        }).execute()
 
     @staticmethod
     def get_recent(limit: int = 10) -> list[dict]:
-        with _get_db() as db:
-            records = db.table(RunLogDB.TABLE).all()
-            records.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
-            return records[:limit]
+        sb = _get_supabase()
+        res = (
+            sb.table(RunLogDB.TABLE)
+            .select("*")
+            .order("timestamp", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return res.data

@@ -29,8 +29,6 @@ jobs:
           SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY:      ${{ secrets.SUPABASE_KEY }}
           DB_PATH:           data/db.json
-          SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY:      ${{ secrets.SUPABASE_KEY }}
           MAX_PROSPECTS:     "5"
           MAX_DDG_PER_QUERY: "5"
         run: python -m backend.pipeline --run
