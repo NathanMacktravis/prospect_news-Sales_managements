@@ -139,11 +139,27 @@ def generate_chart(prospects: list[ScoredProspect]) -> Optional[str]:
         return None
 
     try:
-        names = [
+        raw_names = [
             p.name.split(" ")[0] + " " + (p.name.split(" ")[-1] if len(p.name.split()) > 1 else "")
             for p in prospects
         ]
-        names = [n[:18] + "…" if len(n) > 18 else n for n in names]
+        raw_names = [n[:18] + "…" if len(n) > 18 else n for n in raw_names]
+
+        # Deduplicate labels so Plotly keeps each prospect as a distinct bar
+        seen_labels: dict[str, int] = {}
+        names = []
+        for label in raw_names:
+            if label in seen_labels:
+                seen_labels[label] += 1
+                names.append(f"{label}-{seen_labels[label]}")
+            else:
+                seen_labels[label] = 1
+                names.append(label)
+        # Retroactively suffix the first occurrence if a duplicate was found
+        for label, count in seen_labels.items():
+            if count > 1:
+                idx = names.index(label)
+                names[idx] = f"{label}-1"
         potential_scores = [p.potential_score for p in prospects]
         urgency_scores   = [p.urgency_score * 10 for p in prospects]
 
