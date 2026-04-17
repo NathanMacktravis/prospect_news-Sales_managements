@@ -35,5 +35,6 @@ build/
 
 # Others 
 data/Prospect_Intelligence_Documentation.pptx
-.claude/
-.devcontainer/
+.claude
+.devcontainer
+data/sg-logo.png
