@@ -3,7 +3,7 @@
 .env.local
 
 # Data — fichiers générés à l'exécution (exclus du repo)
-*data/
+data/
 
 # Python
 __pycache__/
