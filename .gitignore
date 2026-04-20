@@ -3,10 +3,7 @@
 .env.local
 
 # Data — fichiers générés à l'exécution (exclus du repo)
-# Note : data/ n'est PAS ignoré en entier pour permettre de versionner sg-logo.png
-data/db.json
-data/newsletter_*.html
-data/test_*.html
+data/
 
 # Python
 __pycache__/
@@ -34,7 +31,5 @@ build/
 .env
 
 # Others 
-data/Prospect_Intelligence_Documentation.pptx
-.claude
-.devcontainer
-data/sg-logo.png
+*.claude
+*.devcontainer
