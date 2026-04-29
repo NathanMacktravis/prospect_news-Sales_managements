@@ -2,7 +2,7 @@ name: Daily Intelligence Prospect Pipeline
 
 on:
   schedule:
-    - cron: '0 7 * * 1,3'   
+    # - cron: '0 7 * * 1,3'   
   workflow_dispatch:        # Pour le déclenchement manuel possible
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
           cache: 'pip' 
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt 
 
       - name: Run pipeline
         env:
